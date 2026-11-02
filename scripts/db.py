@@ -36,6 +36,14 @@ TABLES = {
           position int, data text,
           primary key (hd, jcd, rno, lane)
         )""",
+    # レース単位の情報（成績ファイル由来）: 天候・風向・風速・波高など
+    "races": """
+        create table if not exists races (
+          hd text not null, jcd text not null, rno int not null,
+          race_name text, distance int, weather text, wind_direction int,
+          wind_speed real, wave_height real, data text,
+          primary key (hd, jcd, rno)
+        )""",
     # 払戻: 1券種1行
     "payouts": """
         create table if not exists payouts (
@@ -88,6 +96,7 @@ TABLES = {
 KEY_COLS = {
     "entries": ["hd", "jcd", "rno", "lane"],
     "results": ["hd", "jcd", "rno", "lane"],
+    "races": ["hd", "jcd", "rno"],
     "payouts": ["hd", "jcd", "rno", "ticket_type", "combination"],
     "picks": ["hd", "jcd", "rno", "ticket_type", "combination"],
     "verifications": ["hd"],

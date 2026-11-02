@@ -167,7 +167,17 @@ def ingest_performance(dl, parser, d) -> tuple[int, int]:
             "combination": str(_pick(pd_, "winning_combination", "combination")),
             "payout": int(_pick(pd_, "payout", "amount", default=0)),
         })
+    race_rows = []
+    for r in res.races:
+        rd = _asdict(r)
+        race_rows.append({
+            "hd": hd, "jcd": str(rd["venue_code"]).zfill(2), "rno": int(rd["race_number"]),
+            "race_name": rd.get("race_name"), "distance": rd.get("distance"),
+            "weather": rd.get("weather"), "wind_direction": rd.get("wind_direction"),
+            "wind_speed": rd.get("wind_speed"), "wave_height": rd.get("wave_height"), "data": rd,
+        })
     con = connect()
+    upsert(con, "races", race_rows)
     return upsert(con, "results", result_rows), upsert(con, "payouts", payout_rows)
 
 
