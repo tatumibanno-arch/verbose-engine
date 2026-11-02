@@ -39,6 +39,8 @@ scripts/
   common.py             ← パス・日付・場コード
   db.py                 ← SQLite⇄Parquet、stats、その場SQL
   ingest.py             ← 番組表/成績の取り込み（単日・期間）
+  ingest_fan.py         ← 選手期別成績（fanYYMM.lzh、2001年〜全期）
+  scrape_web.py         ← boatrace.jp の締切時オッズ・直前情報
   select_races.py       ← 翌日の買い目を作る
   verify.py             ← 検証、移動平均、バックテスト
   notify.py             ← Slack 通知（未設定なら標準出力）
@@ -60,6 +62,20 @@ notes/
 - `payouts`（払戻）hd, jcd, rno, ticket_type, combination, payout（100円あたり）
 - `picks`（買い目）hd, jcd, rno, ticket_type, combination, amount, rules_version, reason, paper
 - `verifications`（日次）hd, rules_version, races, bets, hits, bet_total, payout_total, hit_rate, roi, note
+- `odds`（締切時オッズ）hd, jcd, rno, ticket_type, combination, odds, odds_max（複勝の上限）
+- `beforeinfo`（直前情報）hd, jcd, rno, lane, exhibition_time, tilt, start_course, start_st, data(JSON: 体重・部品交換・水面気象など)
+- `racer_stats`（期別成績）hd(=算出期間の最終日), racer_no, year, term, grade, win_rate, top2_rate, avg_st, data(JSON: コース別の進入・着順回数・平均ST・c1_win_rate など)
+
+### いつ手に入る情報か（リークに注意）
+
+| データ | 手に入る時点 | 前夜の選定に使えるか |
+|---|---|---|
+| entries（番組表） | 前日夜 | 使える |
+| racer_stats（期別成績） | 算出期間の最終日（hd）より後 | レース日より前の hd の最新行だけ使う |
+| results / payouts の過去分 | 各レース後 | 過去日の分だけ使う（モーター・選手の直近成績など） |
+| results の展示タイム・進入・ST | レース当日 | 使えない（当日運用にするなら beforeinfo を使う） |
+| beforeinfo（直前情報） | レース当日・展示後 | 使えない |
+| odds（締切時オッズ） | 締切時 | 使えない。市場の歪み（どこが過小評価か）を調べる用 |
 
 `data` 列には元レコードの全項目を JSON で残している。項目名が確定していない列（1コース1着率、モーター2連率など）は、ここから取り出して使う。
 

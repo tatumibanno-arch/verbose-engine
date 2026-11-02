@@ -207,7 +207,7 @@ def main() -> int:
 
     con = connect()
     races = con.execute(
-        "select distinct hd, jcd, rno from results where hd between ? and ? order by hd, jcd, rno", (d0, d1)
+        "select distinct hd, jcd, rno from results where hd between ? and ? order by hd desc, jcd, rno", (d0, d1)
     ).fetchall()
     jobs = []
     for page in pages:
