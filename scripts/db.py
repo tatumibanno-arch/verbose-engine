@@ -72,7 +72,7 @@ KEY_COLS = {
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     fresh = not DB_PATH.exists()
-    con = sqlite3.connect(DB_PATH)
+    con = sqlite3.connect(DB_PATH, timeout=30)
     for ddl in TABLES.values():
         con.execute(ddl)
     if fresh:
