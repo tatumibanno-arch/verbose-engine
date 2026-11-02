@@ -7,3 +7,4 @@
 | 2026-11-02 | 選定ルールは config/rules.yaml に集約 | スマホから会話で変更しやすく、差分がgitに残るため |
 | 2026-11-02 | 予算は実験全体で1万円、1点100円固定、1日1レース（rules v1） | 検証段階なので1日に大きく張らず、約1か月分の試行回数を確保するため |
 | 2026-11-02 | レース数・予算の上限を撤廃（条件に合えば何レースでも、無ければ0）。1点100円固定は維持 | 勝てる方法を探すのが目的で、人為的な絞り込みは検証を歪めるため |
+| 2026-11-02 | ingest の項目名を確定（実データ基準・2026-11-01）。成績(K)は boatrace-lzh の PerformanceParser をそのまま使い、番組表(B)は ingest.py の parse_schedule_text() で固定長を自前パース。data 列: national_win_rate / national_2ren_rate / local_win_rate / local_2ren_rate / motor_2ren_rate / boat_2ren_rate / series_results / early_hayami ほか | boatrace-lzh 0.1.0 の ScheduleParser は全場1ファイル形式に未対応（場コード空・12R分しか残らない・勝率/モーター等を捨てる）。空白区切りでは「28.87128」のように列がくっつくため列位置で切る |
