@@ -1,0 +1,84 @@
+name: ingest
+
+# 公式ダウンロードサービスからデータを取り込み、Parquet をコミットする。
+# - 毎晩 21:30 JST に当日の成績と翌日の番組表を取り込む
+# - 手動実行（workflow_dispatch）で期間を指定すれば過去データの一括取り込み
+
+on:
+  # 予備ルート。Claude 環境のネットワーク設定が使えないときは、下の schedule を有効にすれば
+  # GitHub Actions 側で毎晩 21:30 JST に取り込んで Parquet をコミットする（設定不要・ネット制限なし）
+  # schedule:
+  #   - cron: "30 12 * * *"   # 21:30 JST
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "schedule / performance / both"
+        default: "both"
+      date_from:
+        description: "開始日 YYYYMMDD（空なら当日/翌日）"
+        default: ""
+      date_to:
+        description: "終了日 YYYYMMDD（空なら date_from と同じ）"
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full
+          pip install -r requirements.txt
+
+      - name: Rebuild SQLite from Parquet
+        run: python scripts/db.py rebuild
+
+      - name: Ingest
+        env:
+          KIND: ${{ github.event.inputs.kind || 'both' }}
+          DATE_FROM: ${{ github.event.inputs.date_from }}
+          DATE_TO: ${{ github.event.inputs.date_to }}
+        run: |
+          set -e
+          TODAY=$(TZ=Asia/Tokyo date +%Y%m%d)
+          TOMORROW=$(TZ=Asia/Tokyo date -d tomorrow +%Y%m%d)
+          if [ -n "$DATE_FROM" ]; then
+            TO="${DATE_TO:-$DATE_FROM}"
+            [ "$KIND" != "schedule" ]    && python scripts/ingest.py performance --from "$DATE_FROM" --to "$TO"
+            [ "$KIND" != "performance" ] && python scripts/ingest.py schedule    --from "$DATE_FROM" --to "$TO"
+          else
+            [ "$KIND" != "schedule" ]    && python scripts/ingest.py performance --date "$TODAY"
+            [ "$KIND" != "performance" ] && python scripts/ingest.py schedule    --date "$TOMORROW"
+          fi
+          python scripts/db.py stats
+
+      - name: Export Parquet
+        run: python scripts/db.py export
+
+      - name: Commit
+        run: |
+          git config user.name "ingest-bot"
+          git config user.email "ingest-bot@users.noreply.github.com"
+          git add data/parquet
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "ingest: $(TZ=Asia/Tokyo date +%Y-%m-%d) ${{ github.event.inputs.date_from }}${{ github.event.inputs.date_to && format('-{0}', github.event.inputs.date_to) }}"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
