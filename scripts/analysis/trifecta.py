@@ -53,6 +53,7 @@ TRAIN_MONTHS = 24          # 学習窓（月）
 VALID_MONTHS = 2           # 学習窓の末尾。早期打ち切りと τ・λ 用
 PRE_FITS = ["2024-05", "2024-08", "2024-11", "2025-02", "2025-05", "2025-08"]   # 四半期ごと（各3か月を予測）
 TEST_MONTHS = [f"{y}-{m:02d}" for y, m in [(2025, 11), (2025, 12)] + [(2026, i) for i in range(1, 11)]]
+WORK = DEFAULT_WORK
 SELECT_WINDOW = 12         # 買い方の選択に使う直前の月数
 G_FIRST_MONTH = "2024-05"  # 払戻モデルの学習に使う最初の月（OOS予測が始まる月）
 EVAL_FIRST_MONTH = "2024-11"
@@ -345,6 +346,473 @@ def cmd_predict(work: Path, only=None):
         imp.head(40).to_csv(pdir / f"imp1_{start}.csv")
 
 
+# ============================================================== 評価用データ
+RACE_FLAGS = ["r_final", "r_semifinal", "r_special", "r_qualify", "r_fixed_course", "race_n_a1", "close_hour"]
+
+
+def load_eval(work: Path):
+    """予測（OOS）と払戻・返還・前夜の素性をレース単位にそろえる。"""
+    files = sorted((work / "pred").glob("pred_*.npz"))
+    parts = []
+    for f in files:
+        z = np.load(f)
+        parts.append(dict(hd=z["hd"], jcd=z["jcd"], rno=z["rno"], P=z["P"], P1=z["P1"], Ph=z["Ph"], Pp=z["Pp"]))
+    R = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
+    races = pd.DataFrame({"hd": R["hd"], "jcd": R["jcd"], "rno": R["rno"]})
+    races["month"] = month_of(races["hd"])
+    hd_lo, hd_hi = races.hd.min(), races.hd.max()
+    con = connect()
+    pay = pd.read_sql("select hd, jcd, rno, combination comb, payout from payouts where ticket_type='sanrensho' "
+                      "and hd between ? and ?", con, params=(hd_lo, hd_hi))
+    pay = pay.drop_duplicates(["hd", "jcd", "rno"])     # 同着は無かった（確認済み）。あれば最初の1つ
+    races = races.merge(pay, on=["hd", "jcd", "rno"], how="left")
+    ok = races["comb"].notna()
+    hit = np.full(len(races), -1)
+    y3 = races.loc[ok, "comb"].str.split("-", expand=True).astype(int).to_numpy() - 1
+    hit[ok.to_numpy()] = combo_index(y3)
+    races["hit"] = hit
+    races["payout"] = races["payout"].fillna(0).astype(float)
+    vd = load_void(con, hd_lo, hd_hi)
+    lane_void = np.zeros((len(races), 6), bool)
+    key = races.reset_index()[["index", "hd", "jcd", "rno"]]
+    vv = vd.merge(key, on=["hd", "jcd", "rno"])
+    lane_void[vv["index"].to_numpy(), vv["lane"].to_numpy().astype(int) - 1] = True
+    void = lane_void[:, PERMS].any(2)                                       # (nr, 120)
+    # 前夜の素性（特徴量テーブルから）
+    df = load_features(work)
+    df = df[df["hd"].between(hd_lo, hd_hi)]
+    k6 = df[["hd", "jcd", "rno"]].iloc[::6].reset_index(drop=True)
+    k6["fi"] = np.arange(len(k6))
+    races = races.merge(k6, on=["hd", "jcd", "rno"], how="left")
+    assert races["fi"].notna().all()
+    fi = races["fi"].to_numpy()
+    nwr = df["national_win_rate"].to_numpy().reshape(-1, 6)[fi]
+    grd = df["grade"].to_numpy().reshape(-1, 6)[fi]
+    l1 = df.iloc[::6][RACE_FLAGS].to_numpy()[fi]
+    for i, c in enumerate(RACE_FLAGS):
+        races[c] = l1[:, i]
+    races["race_cat"] = np.select([races.r_final == 1, races.r_semifinal == 1, races.r_special == 1, races.r_qualify == 1],
+                                  ["優勝戦", "準優", "特選系", "予選"], "一般")
+    log(f"eval races={len(races)} with payout={ok.sum()} void-combos={void.sum()}")
+    return races, R, void, nwr, grd
+
+
+def entropy(P):
+    return -(P * np.log(np.clip(P, 1e-12, None))).sum(1)
+
+
+def g_features(races, P, P1, nwr, grd):
+    """払戻モデル g の入力（レース×120 を平たくする）。前夜に分かるものだけ。"""
+    nr = len(races)
+    a, b, c = PERMS[:, 0], PERMS[:, 1], PERMS[:, 2]
+    rankP = (-P).argsort(1).argsort(1) + 1
+    r1 = (-P1).argsort(1).argsort(1) + 1
+    nr_rank = (-np.nan_to_num(nwr, nan=0)).argsort(1).argsort(1) + 1
+    H = entropy(P)
+    cols = {
+        "cid": np.tile(np.arange(120), nr), "la": np.tile(a + 1, nr), "lb": np.tile(b + 1, nr), "lc": np.tile(c + 1, nr),
+        "logP": np.log(np.clip(P, 1e-9, None)).ravel(), "rankP": rankP.ravel(),
+        "lp1a": np.log(P1[:, a]).ravel(), "lp1b": np.log(P1[:, b]).ravel(), "lp1c": np.log(P1[:, c]).ravel(),
+        "r1a": r1[:, a].ravel(), "r1b": r1[:, b].ravel(), "r1c": r1[:, c].ravel(),
+        "nwa": nwr[:, a].ravel(), "nwb": nwr[:, b].ravel(), "nwc": nwr[:, c].ravel(),
+        "nra": nr_rank[:, a].ravel(), "nrb": nr_rank[:, b].ravel(), "nrc": nr_rank[:, c].ravel(),
+        "ga": grd[:, a].ravel(), "gb": grd[:, b].ravel(), "gc": grd[:, c].ravel(),
+    }
+    rep = lambda x: np.repeat(np.asarray(x, dtype=float), 120)
+    cols.update({"H": rep(H), "lpmax": rep(np.log(P.max(1))), "p1max": rep(P1.max(1)),
+                 "nw1": rep(nwr[:, 0]), "nwmax_o": rep(np.nanmax(nwr[:, 1:], 1)),
+                 "jcd": rep(races["jcd"].astype(int)), "rno": rep(races["rno"])})
+    for c_ in RACE_FLAGS:
+        cols[c_] = rep(races[c_])
+    return pd.DataFrame(cols).astype(np.float32)
+
+
+G_PARAMS = dict(objective="gamma", learning_rate=0.03, num_leaves=31, min_data_in_leaf=100,
+                feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=1, lambda_l2=10.0,
+                num_threads=4, verbose=-1, seed=11)
+G_ROUNDS = 600
+
+
+def fit_g_all(work, races, R, nwr, grd, months_eval):
+    """月ごとに g（当たったときの払戻の期待値）を、その月より前の当たりだけで学習して予測。"""
+    import lightgbm as lgb
+    cache = work / "eval" / "g_pred.npy"
+    if cache.exists():
+        G = np.load(cache)
+        if G.shape == R["P"].shape:
+            return G
+    G = np.full(R["P"].shape, np.nan, dtype=np.float32)
+    month = races["month"].to_numpy()
+    hit = races["hit"].to_numpy()
+    for m in months_eval:
+        t0 = time.time()
+        tr = np.where((month >= G_FIRST_MONTH) & (month < m) & (hit >= 0))[0]
+        Xtr = g_features(races.iloc[tr], R["P"][tr], R["P1"][tr], nwr[tr], grd[tr])
+        Xtr = Xtr.to_numpy().reshape(len(tr), 120, -1)[np.arange(len(tr)), hit[tr]]
+        ytr = races["payout"].to_numpy()[tr]
+        mdl = lgb.train(G_PARAMS, lgb.Dataset(Xtr, ytr), G_ROUNDS)
+        te = np.where(month == m)[0]
+        Xte = g_features(races.iloc[te], R["P"][te], R["P1"][te], nwr[te], grd[te]).to_numpy()
+        G[te] = mdl.predict(Xte).reshape(len(te), 120)
+        log(f"  g for {m}: train hits={len(tr)} ({time.time()-t0:.0f}s)")
+    np.save(cache, G)
+    return G
+
+
+# ============================================================== 買い方
+def topk_mask(P, k):
+    idx = np.argsort(-P, 1)[:, :k]
+    m = np.zeros(P.shape, bool)
+    np.put_along_axis(m, idx, True, 1)
+    return m
+
+
+def build_candidates(H_cuts):
+    """(名前, 系統, 関数(ctx)->mask)。ctx は月ごとの配列。"""
+    C = []
+    for k in [1, 2, 3, 4, 6, 8, 10, 15, 20, 30]:
+        C.append((f"A:top{k}", "A 確率上位k点（全レース）", lambda x, k=k: topk_mask(x["P"], k)))
+    for q, hc in H_cuts.items():
+        for k in [1, 2, 3, 5, 8]:
+            C.append((f"B:H<=q{q}:top{k}", "B 荒れにくいレース×上位k点",
+                      lambda x, hc=hc, k=k: topk_mask(x["P"], k) & (x["H"] <= hc)[:, None]))
+    for tau in [1.0, 1.1, 1.2, 1.3, 1.5, 1.75, 2.0, 2.5, 3.0]:
+        for pmin in [0, 0.003, 0.01, 0.03]:
+            C.append((f"C:EV>={tau}:p>={pmin}", "C 期待値（確率×推定配当）しきい値",
+                      lambda x, tau=tau, pmin=pmin: (x["EV"] >= tau) & (x["P"] >= pmin)))
+    for k in [3, 5, 10, 20]:
+        for tau in [0.9, 1.0, 1.1, 1.2, 1.4]:
+            C.append((f"D:top{k}&EV>={tau}", "D 上位k点のうち期待値しきい値以上",
+                      lambda x, k=k, tau=tau: topk_mask(x["P"], k) & (x["EV"] >= tau)))
+    for p1 in [0.5, 0.6, 0.7, 0.8]:
+        for m in [2, 4, 6, 10, 20]:
+            C.append((f"E:fav>={p1}:fix1:top{m}", "E 本命1着固定の流し（上位m点）",
+                      lambda x, p1=p1, m=m: topk_mask(np.where(x["favfirst"], x["P"], -1), m) & (x["p1max"] >= p1)[:, None]))
+    for p1 in [0.5, 0.6, 0.7]:
+        for tau in [1.0, 1.2, 1.5]:
+            C.append((f"F:fav>={p1}:fix1:EV>={tau}", "F 本命1着固定×期待値",
+                      lambda x, p1=p1, tau=tau: x["favfirst"] & (x["EV"] >= tau) & (x["p1max"] >= p1)[:, None]))
+    for r in [1.0, 1.1, 1.25, 1.5]:
+        for h in [10, 30]:
+            C.append((f"G:cell>={r}:hits>={h}", "G 型×確率帯のセルで過去の回収率が高いもの",
+                      lambda x, r=r, h=h: x["cell_ok"](r, h)))
+    return C
+
+
+PBANDS = np.array([0.0, 0.002, 0.005, 0.01, 0.02, 0.04, 0.07, 0.12, 1.01])
+
+
+def cmd_evaluate(work: Path):
+    ev = work / "eval"
+    ev.mkdir(exist_ok=True)
+    races, R, void, nwr, grd = load_eval(work)
+    month = races["month"].to_numpy()
+    months_all = sorted(set(month))
+    months_eval = [m for m in months_all if EVAL_FIRST_MONTH <= m <= TEST_MONTHS[-1]]
+    hit = races["hit"].to_numpy()
+    payout = races["payout"].to_numpy()
+    has = hit >= 0
+    P, P1 = R["P"].astype(np.float64), R["P1"].astype(np.float64)
+    out = []
+
+    # ---- 1. 当てはまり（検証期間） ----
+    def ll_of(PP, sel):
+        return -np.log(np.clip(PP[sel, hit[sel]], 1e-12, None)).mean()
+    tst = has & np.isin(month, TEST_MONTHS)
+    pre = has & (month >= G_FIRST_MONTH) & (month < TEST_MONTHS[0])
+    fit_rows = []
+    for nm, PP in [("3段LightGBM", P), ("Harville", R["Ph"]), ("べき乗Harville", R["Pp"])]:
+        fit_rows.append(dict(model=nm, ll_pre=ll_of(PP, pre), ll_test=ll_of(PP, tst),
+                             top1_hit=(np.argmax(PP[tst], 1) == hit[tst]).mean(),
+                             top10_hit=(topk_mask(PP[tst], 10)[np.arange(tst.sum()), hit[tst]]).mean()))
+    fit_rows.append(dict(model="一様(1/120)", ll_pre=math.log(120), ll_test=math.log(120), top1_hit=1 / 120, top10_hit=10 / 120))
+    win = hit // 20  # PERMS は1着艇ごとに20個ずつ並ぶ
+    fit_rows.append(dict(model="(参考)1着モデル P1", ll_pre=-np.log(P1[pre, win[pre]]).mean(),
+                         ll_test=-np.log(P1[tst, win[tst]]).mean(), top1_hit=(np.argmax(P1[tst], 1) == win[tst]).mean(),
+                         top10_hit=np.nan))
+    fit = pd.DataFrame(fit_rows)
+    fit.to_csv(ev / "fit.csv", index=False)
+    out.append("## 当てはまり\n" + fit.to_markdown(index=False, floatfmt=".4f"))
+    # 校正（検証期間・全買い目）
+    pt = P[tst].ravel()
+    yt = np.zeros_like(P[tst], dtype=bool)
+    yt[np.arange(tst.sum()), hit[tst]] = True
+    b = np.digitize(pt, PBANDS) - 1
+    cal = pd.DataFrame({"band": b, "p": pt, "y": yt.ravel()}).groupby("band").agg(n=("y", "size"), pred=("p", "mean"), actual=("y", "mean"))
+    cal.index = [f"{PBANDS[i]:.3f}-{PBANDS[i+1]:.3f}" for i in cal.index]
+    p1t = P1[tst].ravel(); y1 = np.zeros_like(P1[tst], dtype=bool); y1[np.arange(tst.sum()), win[tst]] = True
+    b1 = np.digitize(p1t, [0, .05, .1, .2, .3, .4, .5, .6, .7, .8, 1.01]) - 1
+    cal1 = pd.DataFrame({"band": b1, "p": p1t, "y": y1.ravel()}).groupby("band").agg(n=("y", "size"), pred=("p", "mean"), actual=("y", "mean"))
+    out.append("## 校正: 3連単（検証期間）\n" + cal.to_markdown(floatfmt=".4f"))
+    out.append("## 校正: 1着（検証期間）\n" + cal1.to_markdown(floatfmt=".4f"))
+
+    # ---- 2. 払戻モデルと期待値 ----
+    log("fit payout model g per month")
+    G = fit_g_all(work, races, R, nwr, grd, months_eval)
+    EV = P * G / 100.0
+    # g の当てはまり（検証期間の当たり）
+    gh = G[tst, hit[tst]]
+    ah = payout[tst]
+    out.append(f"## 払戻モデル g（検証期間の当たり {tst.sum()} 件）\n"
+               f"- log(推定)とlog(実際)の相関 {np.corrcoef(np.log(gh), np.log(ah))[0,1]:.3f}、"
+               f"推定平均 {gh.mean():.0f}円 / 実際平均 {ah.mean():.0f}円、中央値 推定 {np.median(gh):.0f} / 実際 {np.median(ah):.0f}")
+    # 期待値帯ごとの実際の回収率（全買い目を買ったと仮定、返還は除く）
+    rows = []
+    evb = [0, .5, .7, .8, .9, 1.0, 1.1, 1.2, 1.5, 2.0, 3.0, 1e9]
+    for per, sel in [("前期間", (month >= EVAL_FIRST_MONTH) & (month < TEST_MONTHS[0]) & has), ("検証期間", tst)]:
+        E = EV[sel]; V = ~void[sel]
+        hm = np.zeros(E.shape, bool); hm[np.arange(sel.sum()), hit[sel]] = True
+        bb = np.digitize(E, evb) - 1
+        for i in range(len(evb) - 1):
+            m_ = (bb == i) & V
+            n = m_.sum()
+            if n == 0:
+                continue
+            ret = (hm & m_).sum(1) @ payout[sel]
+            rows.append(dict(period=per, ev=f"{evb[i]}-{evb[i+1]}", combos=int(n), hits=int((hm & m_).sum()),
+                             roi=ret / (100 * n), mean_ev=E[m_].mean()))
+    evt = pd.DataFrame(rows)
+    evt.to_csv(ev / "ev_bands.csv", index=False)
+    out.append("## 推定期待値の帯ごとの実際の回収率（全買い目）\n" + evt.to_markdown(index=False, floatfmt=".3f"))
+
+    # ---- 3. 市場の偏り: 確率帯 × 型 の実際の回収率（発見用=前期間の OOS） ----
+    a = PERMS[:, 0]; bb2 = PERMS[:, 1]; cc = PERMS[:, 2]
+    ctype = np.where(a == 0, np.where(np.isin(bb2, [1, 2]) & np.isin(cc, [1, 2, 3]), "1頭-内(2,3)-内", "1頭-その他"),
+                     np.where(a == 1, "2頭", np.where(a == 2, "3頭", "4-6頭")))
+    rows = []
+    for per, sel in [("発見用 2024-05〜2025-10", has & (month >= G_FIRST_MONTH) & (month < TEST_MONTHS[0])), ("検証用 2025-11〜2026-10", tst)]:
+        PPs = P[sel]; V = ~void[sel]
+        hm = np.zeros(PPs.shape, bool); hm[np.arange(sel.sum()), hit[sel]] = True
+        bands = np.digitize(PPs, PBANDS) - 1
+        pay_m = hm * payout[sel][:, None]
+        for t in np.unique(ctype):
+            tm = (ctype == t)[None, :]
+            for i in range(len(PBANDS) - 1):
+                m_ = (bands == i) & tm & V
+                n = m_.sum()
+                if n < 200:
+                    continue
+                rows.append(dict(period=per, type=t, pband=f"{PBANDS[i]:.3f}-{PBANDS[i+1]:.3f}", combos=int(n),
+                                 hits=int((hm & m_).sum()), roi=(pay_m * m_).sum() / (100 * n)))
+    bias = pd.DataFrame(rows)
+    bias.to_csv(ev / "bias.csv", index=False)
+    piv = bias.pivot_table(index=["type", "pband"], columns="period", values="roi")
+    out.append("## 確率帯×型の回収率（全買い目を買った場合）\n" + piv.to_markdown(floatfmt=".3f"))
+    pb = bias.groupby(["period", "pband"]).apply(lambda d: pd.Series({"combos": d.combos.sum(),
+                                                 "roi": (d.roi * d.combos).sum() / d.combos.sum()})).unstack(0)
+    out.append("## 確率帯ごとの回収率（本命-大穴の偏り）\n" + pb.to_markdown(floatfmt=".3f"))
+
+    # ---- 4. 買い方の候補を月ごとに計算 ----
+    sel0 = (month >= G_FIRST_MONTH) & (month < EVAL_FIRST_MONTH) & has
+    Hall = entropy(P)
+    H_cuts = {q: float(np.quantile(Hall[sel0], q)) for q in [0.1, 0.2, 0.3, 0.5]}
+    cands = build_candidates(H_cuts)
+    log(f"candidates={len(cands)}")
+    pbands_all = np.digitize(P, PBANDS) - 1
+    cell_id = np.arange(120)[None, :] * 10 + pbands_all                     # (nr,120)
+    # セルの累積成績（月ごと）
+    cell_cost = {}; cell_ret = {}; cell_hit = {}
+    for m in months_all:
+        s_ = (month == m) & has
+        ids = cell_id[s_][~void[s_]]
+        cc_ = np.bincount(ids, minlength=1200)
+        hm = cell_id[s_, hit[s_]]
+        cell_cost[m] = cc_; cell_ret[m] = np.bincount(hm, weights=payout[s_], minlength=1200)
+        cell_hit[m] = np.bincount(hm, minlength=1200)
+    res = []   # (cand, month, races, bets, hits, cost, ret)
+    for m in months_eval:
+        s_ = np.where((month == m) & has)[0]
+        prior = [mm for mm in months_all if G_FIRST_MONTH <= mm < m]
+        cc_ = sum(cell_cost[mm] for mm in prior); cr = sum(cell_ret[mm] for mm in prior); ch = sum(cell_hit[mm] for mm in prior)
+        roi_cell = cr / np.maximum(cc_ * 100, 1)
+        Pm = P[s_]; P1m = P1[s_]
+        fav = np.argmax(P1m, 1)
+        ctx = dict(P=Pm, EV=EV[s_], H=Hall[s_], p1max=P1m.max(1), favfirst=(PERMS[:, 0][None, :] == fav[:, None]),
+                   cell_ok=lambda r, h, cid=cell_id[s_]: ((roi_cell >= r) & (ch >= h))[cid])
+        V = ~void[s_]
+        hm = np.zeros(Pm.shape, bool); hm[np.arange(len(s_)), hit[s_]] = True
+        for name, fam, fn in cands:
+            mk = fn(ctx) & V
+            nb = mk.sum()
+            hits = (mk & hm).any(1)
+            res.append((name, fam, m, int(mk.any(1).sum()), int(nb), int(hits.sum()), 100.0 * nb, float(payout[s_][hits].sum())))
+        log(f"  strategies {m} done")
+    res = pd.DataFrame(res, columns=["cand", "family", "month", "races", "bets", "hits", "cost", "ret"])
+    res.to_parquet(ev / "cand_month.parquet")
+    report = walkforward_report(res, cands, months_eval)
+    out += report
+    (ev / "report.md").write_text("\n\n".join(out))
+    print("\n\n".join(out))
+
+
+def summarize(df):
+    """月別の行（cost, ret, bets, hits）→ 通算の要約"""
+    roi_m = np.where(df.cost > 0, df.ret / df.cost.where(df.cost > 0, 1), np.nan)
+    return dict(total_roi=df.ret.sum() / max(df.cost.sum(), 1), win_months=int((roi_m > 1.0).sum()),
+                months=len(df), worst=np.nanmin(roi_m) if np.isfinite(roi_m).any() else np.nan,
+                bets=int(df.bets.sum()), hits=int(df.hits.sum()), cost=df.cost.sum(), ret=df.ret.sum(),
+                bets_per_month=df.bets.sum() / len(df), races_per_month=df.races.sum() / len(df))
+
+
+def pick_best(res, months, min_hits=30, cands=None):
+    """months の通算回収率が最大の候補（的中 min_hits 以上）"""
+    d = res[res.month.isin(months)]
+    if cands is not None:
+        d = d[d.cand.isin(cands)]
+    g = d.groupby("cand").agg(cost=("cost", "sum"), ret=("ret", "sum"), hits=("hits", "sum"))
+    g = g[(g.hits >= min_hits) & (g.cost > 0)]
+    if g.empty:
+        return None, np.nan
+    g["roi"] = g.ret / g.cost
+    best = g.roi.idxmax()
+    return best, g.roi.max()
+
+
+def walkforward_report(res, cands, months_eval):
+    out = []
+    test = [m for m in months_eval if m in TEST_MONTHS]
+    fams = sorted(set(f for _, f, _ in cands))
+    # (1) 毎月選び直す: その月の前12か月で最良の候補を、その月に適用
+    def rolling(cset, label):
+        rows = []
+        for m in test:
+            i = months_eval.index(m)
+            win = months_eval[max(0, i - SELECT_WINDOW):i]
+            best, hroi = pick_best(res, win, cands=cset)
+            if best is None:
+                rows.append(dict(month=m, chosen="(なし)", hist_roi=np.nan, races=0, bets=0, hits=0, cost=0.0, ret=0.0))
+                continue
+            r = res[(res.cand == best) & (res.month == m)].iloc[0]
+            rows.append(dict(month=m, chosen=best, hist_roi=hroi, races=r.races, bets=r.bets, hits=r.hits, cost=r.cost, ret=r.ret))
+        d = pd.DataFrame(rows)
+        d["roi"] = np.where(d.cost > 0, d.ret / d.cost.where(d.cost > 0, 1), np.nan)
+        s = summarize(d)
+        return d, s
+    allc = [c for c, _, _ in cands]
+    d, s = rolling(allc, "全候補")
+    d.to_csv(WORK / "eval" / "wf_all.csv", index=False)
+    out.append(f"## ウォークフォワード（毎月、直前12か月で全{len(allc)}候補から最良を選んで適用）\n"
+               + d.to_markdown(index=False, floatfmt=".3f") + "\n\n" + fmt_summary(s))
+    rows = []
+    for fam in fams:
+        cs = [c for c, f, _ in cands if f == fam]
+        d2, s2 = rolling(cs, fam)
+        rows.append(dict(family=fam, n_cands=len(cs), **s2))
+    fam_t = pd.DataFrame(rows)
+    out.append("## 系統ごとのウォークフォワード（系統内で毎月選び直し）\n" + fam_t.to_markdown(index=False, floatfmt=".3f"))
+    # (2) 事前に1本固定: 発見用（前期間12か月 2024-11〜2025-10）で最良 → 検証期間に固定で適用
+    disc = [m for m in months_eval if m < TEST_MONTHS[0]]
+    rows = []
+    for fam in fams + ["全候補"]:
+        cs = allc if fam == "全候補" else [c for c, f, _ in cands if f == fam]
+        best, hroi = pick_best(res, disc, cands=cs)
+        if best is None:
+            continue
+        dd = res[(res.cand == best) & res.month.isin(test)]
+        rows.append(dict(family=fam, chosen=best, disc_roi=hroi, **summarize(dd)))
+    fx = pd.DataFrame(rows)
+    out.append("## 事前に1本固定（発見用 2024-11〜2025-10 で最良 → 検証期間に固定で適用）\n" + fx.to_markdown(index=False, floatfmt=".3f"))
+    # (3) 後知恵: 検証期間で最良（成績としては使わない。多重比較の目安）
+    g = res[res.month.isin(test)].groupby(["cand", "family"]).apply(lambda x: pd.Series(summarize(x))).reset_index()
+    g = g.sort_values("total_roi", ascending=False)
+    g.to_csv(WORK / "eval" / "hindsight.csv", index=False)
+    n_pass = int(((g.total_roi > 1) & (g.win_months >= 8)).sum())
+    out.append(f"## 後知恵（検証期間で直接比べた上位15。{len(g)}候補中、合格ライン相当は {n_pass} 本。成績としては使わない）\n"
+               + g.head(15)[["cand", "total_roi", "win_months", "worst", "bets_per_month", "races_per_month", "hits"]].to_markdown(index=False, floatfmt=".3f"))
+    # 同じ候補の発見用の成績（後知恵の上位が発見用でも良かったか）
+    dsum = res[res.month.isin(disc)].groupby("cand").apply(lambda x: x.ret.sum() / max(x.cost.sum(), 1))
+    g["disc_roi"] = g["cand"].map(dsum)
+    out.append("発見用ROIと検証用ROIの順位相関（全候補）: "
+               f"{g[['disc_roi','total_roi']].corr(method='spearman').iloc[0,1]:.3f}")
+    return out
+
+
+def fmt_summary(s):
+    return (f"通算回収率 {s['total_roi']:.3f}、勝ち月 {s['win_months']}/{s['months']}、最悪月 {s['worst']:.3f}、"
+            f"購入 {s['bets']}点（月 {s['bets_per_month']:.0f}点 = {s['bets_per_month']*100:,.0f}円、{s['races_per_month']:.0f}レース）、的中 {s['hits']}")
+
+
+def cmd_odds(work: Path):
+    """締切オッズがある期間での参考（前夜・朝8時には使えない情報。本命の結果とは分ける）。"""
+    import lightgbm as lgb
+    ev = work / "eval"
+    ev.mkdir(exist_ok=True)
+    races, R, void, nwr, grd = load_eval(work)
+    month = races["month"].to_numpy(); hit = races["hit"].to_numpy(); payout = races["payout"].to_numpy()
+    con = connect()
+    out = []
+    key = races.reset_index()[["index", "hd", "jcd", "rno"]]
+    # ---- (1) 3連単オッズ（ある日だけ） ----
+    od = pd.read_sql("select hd, jcd, rno, combination comb, odds from odds where ticket_type='sanrensho'", con)
+    od = od.merge(key, on=["hd", "jcd", "rno"])
+    if len(od):
+        idx = od["index"].to_numpy()
+        ci = combo_index(od["comb"].str.split("-", expand=True).astype(int).to_numpy() - 1)
+        O = np.full(R["P"].shape, np.nan); O[idx, ci] = od["odds"].to_numpy()
+        rs = np.unique(idx)
+        rs = rs[(hit[rs] >= 0) & np.isfinite(O[rs]).all(1)]
+        # g をこの月より前の当たり全部で学習
+        mo = month[rs[0]]
+        tr = np.where((month >= G_FIRST_MONTH) & (month < mo) & (hit >= 0))[0]
+        Xtr = g_features(races.iloc[tr], R["P"][tr], R["P1"][tr], nwr[tr], grd[tr]).to_numpy().reshape(len(tr), 120, -1)
+        Xtr = Xtr[np.arange(len(tr)), hit[tr]]
+        mdl = lgb.train(G_PARAMS, lgb.Dataset(Xtr, payout[tr]), G_ROUNDS)
+        Gr = mdl.predict(g_features(races.iloc[rs], R["P"][rs], R["P1"][rs], nwr[rs], grd[rs]).to_numpy()).reshape(len(rs), 120)
+        Pm = R["P"][rs].astype(float); Om = O[rs]
+        qm = (1 / Om) / (1 / Om).sum(1, keepdims=True)      # 市場の確率（オッズの逆数を正規化）
+        hm = np.zeros(Pm.shape, bool); hm[np.arange(len(rs)), hit[rs]] = True
+        lines = [f"3連単オッズがあるのは {len(rs)} レース（{sorted(set(races.hd.to_numpy()[rs]))}）。"
+                 f"払戻率（Σ1/オッズ の逆数）の平均 {np.mean(1/(1/Om).sum(1)):.3f}",
+                 f"- 前夜の推定配当 g と実際のオッズ×100 の相関（log、全{Om.size}買い目）: {np.corrcoef(np.log(Gr).ravel(), np.log(Om*100).ravel())[0,1]:.3f}",
+                 f"- モデル確率と市場確率の相関（log）: {np.corrcoef(np.log(Pm).ravel(), np.log(qm).ravel())[0,1]:.3f}",
+                 f"- 対数損失: モデル {-np.log(Pm[hm]).mean():.3f} / 市場 {-np.log(qm[hm]).mean():.3f} / 一様 {math.log(120):.3f}"]
+        for tau in [1.0, 1.2, 1.5, 2.0]:
+            mk = (Pm * Om >= tau)
+            n = mk.sum(); r_ = (Om * 100 * (mk & hm)).sum()
+            mk2 = (Pm * Gr / 100 >= tau); n2 = mk2.sum(); r2 = (Om * 100 * (mk2 & hm)).sum()
+            lines.append(f"- 期待値≥{tau}: 実オッズで選ぶ {n}点 回収率 {r_/max(100*n,1):.3f}（的中 {(mk&hm).sum()}） / "
+                         f"前夜推定で選ぶ {n2}点 回収率 {r2/max(100*n2,1):.3f}（的中 {(mk2&hm).sum()}）")
+        out.append("## 3連単の締切オッズ（参考）\n" + "\n".join(lines))
+    # ---- (2) 単勝オッズ（2026-09-08〜）: 1着確率の比較と単勝の参考 ----
+    td = pd.read_sql("select hd, jcd, rno, cast(combination as int) lane, odds from odds where ticket_type='tansho'", con)
+    td = td.merge(key, on=["hd", "jcd", "rno"])
+    Q = np.full((len(races), 6), np.nan); Q[td["index"].to_numpy(), td["lane"].to_numpy() - 1] = td["odds"].to_numpy()
+    tp = pd.read_sql("select hd, jcd, rno, cast(combination as int) lane, payout from payouts where ticket_type='tansho' and hd>='20260901'", con)
+    tp = tp.merge(key, on=["hd", "jcd", "rno"]).drop_duplicates("index")
+    win = np.full(len(races), -1); win[tp["index"].to_numpy()] = tp["lane"].to_numpy() - 1
+    tpay = np.zeros(len(races)); tpay[tp["index"].to_numpy()] = tp["payout"].to_numpy()
+    rs = np.where(np.isfinite(Q).all(1) & (win >= 0) & (month <= TEST_MONTHS[-1]))[0]
+    if len(rs):
+        P1 = R["P1"][rs].astype(float); Qm = Q[rs]
+        q = (1 / Qm) / (1 / Qm).sum(1, keepdims=True)
+        w = win[rs]
+        lines = [f"単勝オッズがあるレース（検証期間内）: {len(rs)}（{races.hd.to_numpy()[rs].min()}〜{races.hd.to_numpy()[rs].max()}）",
+                 f"- 1着の対数損失: モデル {-np.log(P1[np.arange(len(rs)), w]).mean():.4f} / 締切単勝オッズ {-np.log(q[np.arange(len(rs)), w]).mean():.4f}"]
+        for al in [0.25, 0.5, 0.75]:
+            bl = np.exp(al * np.log(P1) + (1 - al) * np.log(q)); bl /= bl.sum(1, keepdims=True)
+            lines.append(f"  - 混合（モデル {al:.2f}・市場 {1-al:.2f}、対数で）: {-np.log(bl[np.arange(len(rs)), w]).mean():.4f}")
+        for tau in [1.0, 1.1, 1.2, 1.5]:
+            mk = P1 * Qm >= tau
+            ret = (mk[np.arange(len(rs)), w] * tpay[rs]).sum()
+            lines.append(f"- 単勝で モデル確率×締切オッズ ≥{tau}: {mk.sum()}点 回収率 {ret/max(mk.sum()*100,1):.3f}")
+        # 3連単: 市場の1着確率を混ぜた確率で、前夜の推定配当 g を使った期待値（オッズの情報の上積みの目安）
+        Gp = np.load(ev / "g_pred.npy")[rs]
+        Pm = R["P"][rs].astype(float)
+        bl = np.exp(0.5 * np.log(P1) + 0.5 * np.log(q)); bl /= bl.sum(1, keepdims=True)
+        Padj = Pm * (bl / P1)[:, PERMS[:, 0]]           # 1着の確率だけ市場と混ぜた版に置き換え
+        Padj /= Padj.sum(1, keepdims=True)
+        hm = np.zeros(Pm.shape, bool); hs = hit[rs] >= 0
+        hm[np.where(hs)[0], hit[rs][hs]] = True
+        V = ~void[rs]
+        for tau in [1.2, 1.5, 2.0]:
+            for nm, PP in [("前夜のみ", Pm), ("1着に単勝オッズを混ぜる", Padj)]:
+                mk = (PP * Gp / 100 >= tau) & V & hs[:, None]
+                lines.append(f"- 3連単 期待値≥{tau}（{nm}）: {mk.sum()}点 回収率 {(mk & hm).sum(1) @ payout[rs] / max(mk.sum()*100,1):.3f}")
+        out.append("## 単勝の締切オッズ（参考）\n" + "\n".join(lines))
+    (ev / "odds.md").write_text("\n\n".join(out))
+    print("\n\n".join(out))
+
+
 # ============================================================== main
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -352,7 +820,8 @@ def main(argv=None):
     ap.add_argument("--workdir", default=str(DEFAULT_WORK))
     ap.add_argument("--only", help="predict: この学習開始月だけ（カンマ区切り）")
     a = ap.parse_args(argv)
-    work = Path(a.workdir)
+    global WORK
+    work = WORK = Path(a.workdir)
     work.mkdir(parents=True, exist_ok=True)
     if a.cmd in ("features", "all"):
         cmd_features(work)
