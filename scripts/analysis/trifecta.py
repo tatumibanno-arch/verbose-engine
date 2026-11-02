@@ -902,10 +902,112 @@ def cmd_odds(work: Path):
     print("\n\n".join(out))
 
 
+# ============================================================== 単勝（同じ1着モデルで、前夜の推定配当と締切オッズの差を大きな標本で見る）
+def cmd_tansho(work: Path):
+    """3連単の締切オッズは1日分しかないので、単勝（締切オッズが 2026-07 末から数か月ある）で
+    「前夜の推定配当で選ぶ」と「締切オッズで選ぶ（上限の参考）」の差を測る。1着確率は3連単と同じモデル。"""
+    import lightgbm as lgb
+    ev = work / "eval"; ev.mkdir(exist_ok=True)
+    races, R, void, nwr, grd = load_eval(work)
+    month = races["month"].to_numpy()
+    con = connect()
+    key = races.reset_index()[["index", "hd", "jcd", "rno"]]
+    tp = pd.read_sql("select hd, jcd, rno, cast(combination as int) lane, payout from payouts where ticket_type='tansho' "
+                     "and hd >= ?", con, params=(races.hd.min(),)).merge(key, on=["hd", "jcd", "rno"])
+    TP = np.zeros((len(races), 6)); TP[tp["index"].to_numpy(), tp["lane"].to_numpy() - 1] = tp["payout"].to_numpy()
+    has = TP.sum(1) > 0
+    win = np.where(has, np.argmax(TP > 0, 1), -1)
+    vd = load_void(con, races.hd.min(), races.hd.max()).merge(key, on=["hd", "jcd", "rno"])
+    LV = np.zeros((len(races), 6), bool); LV[vd["index"].to_numpy(), vd["lane"].to_numpy().astype(int) - 1] = True
+    P1, al = recalibrate(R["P1"].astype(float), win, month, G_FIRST_MONTH)
+    r1 = (-P1).argsort(1).argsort(1) + 1
+    nrk = (-np.nan_to_num(nwr, nan=0)).argsort(1).argsort(1) + 1
+    H1 = -(P1 * np.log(P1)).sum(1)
+
+    def feats(ix):
+        n = len(ix); rep = lambda x: np.repeat(np.asarray(x, float), 6)
+        cols = {"lane": np.tile(np.arange(1, 7), n), "lp": np.log(P1[ix]).ravel(), "r1": r1[ix].ravel(),
+                "nw": nwr[ix].ravel(), "g": grd[ix].ravel(), "nrk": nrk[ix].ravel(), "H1": rep(H1[ix]),
+                "p1max": rep(P1[ix].max(1)), "nw1": rep(nwr[ix, 0]), "nwmax_o": rep(np.nanmax(nwr[ix, 1:], 1)),
+                "jcd": rep(races["jcd"].to_numpy()[ix].astype(int)), "rno": rep(races["rno"].to_numpy()[ix])}
+        for c in RACE_FLAGS:
+            cols[c] = rep(races[c].to_numpy()[ix])
+        return pd.DataFrame(cols).to_numpy(np.float32)
+    months_eval = [m for m in sorted(set(month)) if EVAL_FIRST_MONTH <= m <= TEST_MONTHS[-1]]
+    G1 = np.full((len(races), 6), np.nan)
+    for m in months_eval:
+        tr = np.where((month >= G_FIRST_MONTH) & (month < m) & has)[0]
+        X = feats(tr).reshape(len(tr), 6, -1)[np.arange(len(tr)), win[tr]]
+        mdl = lgb.train(G_PARAMS, lgb.Dataset(X, TP[tr, win[tr]]), G_ROUNDS)
+        te = np.where(month == m)[0]
+        G1[te] = mdl.predict(feats(te)).reshape(len(te), 6)
+    log("tansho g fitted")
+    EV1 = P1 * G1 / 100
+    rows = []
+    cands = [(t, pm) for t in [1.0, 1.1, 1.2, 1.3, 1.5] for pm in [0.0, 0.1, 0.2, 0.3, 0.5]]
+    for m in months_eval:
+        s_ = np.where((month == m) & has)[0]
+        for t, pm in cands:
+            mk = (EV1[s_] >= t) & (P1[s_] >= pm) & ~LV[s_]
+            rows.append(dict(cand=f"単勝:EV>={t}:p>={pm}", month=m, races=int(mk.any(1).sum()), bets=int(mk.sum()),
+                             hits=int(mk[np.arange(len(s_)), win[s_]].sum()), cost=100.0 * mk.sum(),
+                             ret=float((mk * TP[s_]).sum())))
+    res = pd.DataFrame(rows)
+    res.to_parquet(ev / "tansho_cand_month.parquet")
+    out = []
+    test = [m for m in months_eval if m in TEST_MONTHS]
+    disc = [m for m in months_eval if m < TEST_MONTHS[0]]
+    # 前夜の推定配当の当てはまり
+    tst = np.isin(month, TEST_MONTHS) & has
+    gh = G1[tst, win[tst]]; ah = TP[tst, win[tst]]
+    out.append(f"推定配当（単勝）: log相関 {np.corrcoef(np.log(gh), np.log(ah))[0,1]:.3f}")
+    # ウォークフォワード（毎月選び直し）と事前固定
+    wf = []
+    for m in test:
+        i = months_eval.index(m)
+        best, hroi = pick_best(res, months_eval[max(0, i - SELECT_WINDOW):i])
+        r = res[(res.cand == best) & (res.month == m)].iloc[0]
+        wf.append(dict(month=m, chosen=best, hist_roi=hroi, races=r.races, bets=r.bets, hits=r.hits, cost=r.cost, ret=r.ret, roi=r.ret / max(r.cost, 1)))
+    wf = pd.DataFrame(wf)
+    out.append(f"## 単勝: ウォークフォワード（{len(cands)}候補から毎月選び直し）\n" + wf.to_markdown(index=False, floatfmt=".3f")
+               + "\n\n" + fmt_summary(summarize(wf)))
+    best, hroi = pick_best(res, disc)
+    out.append(f"## 単勝: 発見用で1本固定 → 検証期間\n{best}（発見用 {hroi:.3f}）: " + fmt_summary(summarize(res[(res.cand == best) & res.month.isin(test)])))
+    g = res[res.month.isin(test)].groupby("cand").apply(lambda x: pd.Series(summarize(x)))
+    gd = res[res.month.isin(disc)].groupby("cand").apply(lambda x: x.ret.sum() / max(x.cost.sum(), 1))
+    g["disc_roi"] = gd
+    out.append("## 単勝: 全候補（発見用と検証用）\n" + g[["disc_roi", "total_roi", "win_months", "worst", "bets_per_month", "hits"]].to_markdown(floatfmt=".3f"))
+    # 締切オッズとの比較（オッズがある期間）
+    od = pd.read_sql("select hd, jcd, rno, cast(combination as int) lane, odds from odds where ticket_type='tansho'", con).merge(key, on=["hd", "jcd", "rno"])
+    Q = np.full((len(races), 6), np.nan); Q[od["index"].to_numpy(), od["lane"].to_numpy() - 1] = od["odds"].to_numpy()
+    rs = np.where(np.isfinite(Q).all(1) & has & np.isfinite(G1).all(1))[0]
+    lines = [f"締切オッズがあるレース: {len(rs)}（{races.hd.to_numpy()[rs].min()}〜{races.hd.to_numpy()[rs].max()}）",
+             f"- 予想オッズ（推定配当/100）と締切オッズの相関（log、0倍を除く）: "
+             f"{np.corrcoef(np.log(G1[rs][Q[rs] > 0]), np.log(Q[rs][Q[rs] > 0] * 100))[0,1]:.3f}、1番人気の一致 {(np.argmin(G1[rs],1)==np.argmin(np.where(Q[rs]>0,Q[rs],1e9),1)).mean():.1%}"]
+    qv = np.where(Q[rs] > 0, 1 / np.where(Q[rs] > 0, Q[rs], 1), 0); qv /= qv.sum(1, keepdims=True)
+    w_ = win[rs]
+    lines.append(f"- 1着の対数損失: モデル {-np.log(P1[rs, w_]).mean():.4f} / 締切オッズ（1/オッズを正規化） {-np.log(np.clip(qv[np.arange(len(rs)), w_], 1e-9, None)).mean():.4f}")
+    tbl = []
+    for t, pm in [(1.0, 0.0), (1.2, 0.0), (1.5, 0.0), (1.2, 0.2), (1.2, 0.5)]:
+        r_ = {"買い方": f"EV>={t}, p>={pm}"}
+        for lbl, OO in [("予想オッズ", G1[rs] / 100), ("締切オッズ", Q[rs])]:
+            mk = (P1[rs] * OO >= t) & (P1[rs] >= pm) & ~LV[rs] & (Q[rs] > 0)
+            r_[f"{lbl}:点"] = int(mk.sum()); r_[f"{lbl}:回収率"] = (mk * TP[rs]).sum() / max(100 * mk.sum(), 1)
+        tbl.append(r_)
+    mo = races.month.to_numpy()[rs]
+    for lbl, OO in [("予想オッズ", G1[rs] / 100), ("締切オッズ", Q[rs])]:
+        mk = (P1[rs] * OO >= 1.2) & ~LV[rs] & (Q[rs] > 0)
+        mm = {m: f"{(mk[mo==m]*TP[rs][mo==m]).sum()/max(100*mk[mo==m].sum(),1):.3f}" for m in sorted(set(mo))}
+        lines.append(f"- EV>=1.2 の月別回収率（{lbl}で選ぶ）: {mm}")
+    out.append("## 単勝: 予想オッズで選ぶ vs 締切オッズで選ぶ（上限の参考）\n" + "\n".join(lines) + "\n\n" + pd.DataFrame(tbl).to_markdown(index=False, floatfmt=".3f"))
+    (ev / "tansho.md").write_text("\n\n".join(out))
+    print("\n\n".join(out))
+
+
 # ============================================================== main
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["features", "predict", "evaluate", "odds", "all"])
+    ap.add_argument("cmd", choices=["features", "predict", "evaluate", "odds", "tansho", "all"])
     ap.add_argument("--workdir", default=str(DEFAULT_WORK))
     ap.add_argument("--only", help="predict: この学習開始月だけ（カンマ区切り）")
     a = ap.parse_args(argv)
@@ -920,6 +1022,8 @@ def main(argv=None):
         cmd_evaluate(work)
     if a.cmd in ("odds", "all"):
         cmd_odds(work)
+    if a.cmd in ("tansho", "all"):
+        cmd_tansho(work)
     return 0
 
 
