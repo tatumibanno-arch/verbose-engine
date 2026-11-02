@@ -173,6 +173,18 @@ def write_note(con, hd: str, picks: list[dict], rules: dict, sections: dict[str,
         if not ps:
             lines += [f"- 候補なし{'（' + s['skip'] + '）' if s.get('skip') else ''}", ""]
             continue
+        # 単勝以外は1レース1行にまとめる（例: 3連単 1-2-3, 1-2-4 各¥100）
+        merged, idx = [], {}
+        for p in ps:
+            if p["ticket_type"] == "tansho":
+                merged.append(p)
+                continue
+            k = (p["jcd"], p["rno"], p["ticket_type"], p["amount"])
+            if k not in idx:
+                idx[k] = dict(p, combos=[])
+                merged.append(idx[k])
+            idx[k]["combos"].append(p["combination"])
+        ps = merged
         cur = None
         for p in ps:
             if p["jcd"] != cur:
@@ -189,7 +201,7 @@ def write_note(con, hd: str, picks: list[dict], rules: dict, sections: dict[str,
                              f"　確率 {float(x['p']):.0%} / 予想 {float(x['g']) / 100:.1f}倍 / 期待値 {float(x['ev']):.2f}")
             else:
                 close = info.get((p["jcd"], p["rno"], 1), ("", "?"))[1]
-                lines.append(f"- {p['rno']}R（締切 {close}）{tt} {p['combination']} ¥{p['amount']}")
+                lines.append(f"- {p['rno']}R（締切 {close}）{tt} {', '.join(p['combos'])} 各¥{p['amount']}")
         lines.append("")
     lines += ["## 実購入メモ（朝に人が書く）", "", "- 買った / 見送った / 変更した：", ""]
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -225,8 +237,8 @@ def main() -> int:
         sections[name] = {"title": f"{TICKET_JA.get(cfg['ticket_type'], cfg['ticket_type'])}・"
                                    f"1着確率{cfg['min_win_prob']:.0%}以上 かつ 期待値{cfg['min_ev']}以上",
                           "desc": "確率＝モデルの1着確率、予想＝前夜に推定した単勝配当（当たったときの倍率）、"
-                                  "期待値＝確率×予想。オッズは見ていないので、締切オッズが予想より大きく低い艇は見送ってもよい"
-                                  "（見送ったらメモに書く）。",
+                                  "期待値＝確率×予想。オッズは見ていない（前夜の情報だけ）。"
+                                  "見送った・変えた艇は下のメモに書く。",
                           "skip": skip}
         print(f"{args.date} {name}: 買い目 {len(p)} 点 / ¥{sum(x['amount'] for x in p)}" + (f"（{skip}）" if skip else ""))
 

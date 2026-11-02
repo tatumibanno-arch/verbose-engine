@@ -57,7 +57,9 @@ PAYOUT_PARAMS = dict(objective="gamma", learning_rate=0.03, num_leaves=31, min_d
                      num_threads=THREADS, verbose=-1, seed=11)
 PAYOUT_ROUNDS = 600
 ALPHA_GRID = np.arange(0.6, 1.31, 0.05)
-FEATURE_CHUNK_MONTHS = 6     # 学習用の特徴量を何か月ずつ作るか（メモリのため）
+FEATURE_CHUNK_MONTHS = 6
+LOCK_RETRIES = 10            # DB が別プロセスの書き込みで locked のときの取り直し回数
+LOCK_WAIT_S = 30     # 学習用の特徴量を何か月ずつ作るか（メモリのため）
 
 HIST_KEYS = ["hd", "jcd", "rno"]
 HIST_COLS = (HIST_KEYS + ["model_month", "alpha"] + [f"p1r_{i}" for i in range(1, 7)]
@@ -113,8 +115,16 @@ def month_last_hd(m: str) -> str:
 def build_frame(con, hd_from: str, hd_to: str, mcfg: dict, with_labels: bool) -> pd.DataFrame:
     """features.build_features → 6艇そろったレースだけ・並び順・float32（trifecta.load_features と同じ形）"""
     from features import build_features
-    df = build_features(con, hd_from, hd_to, mcfg["stats_lag_days"], with_labels=with_labels,
-                        hist_days=mcfg.get("feature_history_days"))
+    for attempt in range(LOCK_RETRIES + 1):
+        try:
+            df = build_features(con, hd_from, hd_to, mcfg["stats_lag_days"], with_labels=with_labels,
+                                hist_days=mcfg.get("feature_history_days"))
+            break
+        except Exception as e:  # 別プロセスが書き込み中だと読み取りでも locked が返ることがある
+            if "locked" not in str(e) or attempt == LOCK_RETRIES:
+                raise
+            log(f"  database is locked → {LOCK_WAIT_S}s 待って取り直し（{attempt + 1}/{LOCK_RETRIES}）")
+            time.sleep(LOCK_WAIT_S)
     if df.empty:
         return df
     df = df.sort_values(["hd", "jcd", "rno", "lane"]).reset_index(drop=True)
