@@ -48,10 +48,13 @@ scripts/
   ingest.py             ← 番組表/成績の取り込み（単日・期間）
   ingest_fan.py         ← 選手期別成績（fanYYMM.lzh、2001年〜全期）
   scrape_web.py         ← boatrace.jp の締切時オッズ・直前情報
-  select_races.py       ← 翌日の買い目を作る
+  model.py              ← 単勝ルールの1着確率・予想配当モデル（月次学習）
+  features.py           ← 特徴量（前夜に分かる情報だけ）
+  select_races.py       ← 翌日の買い目を作る（rules.yaml のルールごと）
   verify.py             ← 検証、移動平均、バックテスト
   notify.py             ← Slack 通知（未設定なら標準出力）
-data/parquet/           ← データ正本
+data/parquet/           ← データ正本（2005年〜）
+data/models/            ← 月次の学習済みモデルと予測履歴（git管理）
 notes/
   learnings.md          ← 気づき（追記のみ）
   decisions.md          ← ルール変更・設計判断
