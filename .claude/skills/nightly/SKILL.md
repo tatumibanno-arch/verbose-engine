@@ -18,11 +18,11 @@ description: 毎晩の全手順。今日の成績で検証→気づきを記録�
    - 翌日以降も効きそうなら `notes/learnings.md` に日付つきで追記。断定しない（「傾向あり、要継続」でよい）。
 4. **翌日の番組表を取り込む**：`python scripts/ingest.py schedule --date <明日YYYYMMDD>`
 5. **モデルの用意（月初だけ時間がかかる）**：`python scripts/model.py ensure --date <明日>`
-   - `data/models/tansho_ev/<明日の年月>/` が無ければ、その月のモデルを学習して保存する（直前24か月の特徴量づくり＋学習。目安 10〜15分）。あれば一瞬で終わる。
+   - `data/models/tansho_ev/<明日の年月>/` が無ければ、その月のモデルを学習して保存する（直前24か月の特徴量づくり＋学習。2026-11-02 の計測で 4.5〜6分：特徴量 3.5〜5分、1着モデル 45〜55秒、予想配当モデル 4秒）。あれば一瞬で終わる。
    - 失敗しても止まらずに 6 へ進む（単勝ルールは「モデル未学習」と picks ファイルに出て 0 点になる）。失敗は `notes/daily/<今日>.md` に1行。
 6. **買い目を作る**：`python scripts/select_races.py --date <明日>`
    - ルールごと（`lane1_a1`、`strategies:` の `tansho_ev_v1` など）に買い目を作り、`notes/picks/<明日>.md` にルール別の見出しで出る。候補0件のルールはその旨が出る。
-   - 単勝ルールは翌日分の1着確率・予想配当を `data/models/tansho_ev/history.parquet` に追記する（翌月の学習に使う。消さない）。目安 1〜2分。
+   - 単勝ルールは翌日分の1着確率・予想配当を `data/models/tansho_ev/history.parquet` に追記する（翌月の学習に使う。消さない）。目安 1分（ほぼ特徴量づくり）。
 7. **通知**：`python scripts/notify.py --mode verify` と `--mode picks`
 8. **Parquet 書き出し**：`python scripts/db.py export`
 9. **コミット＆プッシュ**：`git add data/parquet data/models notes && git commit -m "nightly: <今日>" && git push`

@@ -163,14 +163,16 @@ def export_parquet(con: sqlite3.Connection) -> list[str]:
     """年ごとに Parquet を書き出す（既存ファイルは上書き）。"""
     PARQUET_DIR.mkdir(parents=True, exist_ok=True)
     written = []
+    # 20年分を丸ごと読むとメモリが足りないので、年ごとに読んで書く
     for table in TABLES:
-        df = pd.read_sql(f"select * from {table}", con)
-        if df.empty:
-            continue
-        for year, g in df.groupby(df["hd"].str[:4]):
+        years = [r[0] for r in con.execute(f"select distinct substr(hd, 1, 4) from {table} order by 1")]
+        for year in years:
+            g = pd.read_sql(f"select * from {table} where hd >= ? and hd < ?", con,
+                            params=(year, str(int(year) + 1)))
             path = PARQUET_DIR / f"{table}_{year}.parquet"
             g.sort_values(KEY_COLS[table]).to_parquet(path, index=False, compression="zstd")
             written.append(path.name)
+            del g
     return written
 
 
