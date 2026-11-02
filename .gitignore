@@ -5,3 +5,5 @@ __pycache__/
 data/boatrace.db
 data/boatrace.db-journal
 data/lzh_cache/
+data/boatrace.db-wal
+data/boatrace.db-shm
