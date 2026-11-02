@@ -45,6 +45,7 @@ MOTOR_RESET_MIN_GAP = 180           # 入れ替え日どうしの最小間隔（
 SHRINK_K = 10.0                     # コース別率の縮小推定の強さ（仮想レース数）
 
 _K = 1 << 20  # 合成キー: key * _K + day
+_Q = 1e6      # 累積和の量子化単位
 
 
 def connect_ro(path: str | Path = DB_PATH) -> sqlite3.Connection:
@@ -69,7 +70,9 @@ class _Hist:
         self.comp = comp[order]
         self.day = day.astype(np.int64)[order]
         self.names = list(vals)
-        m = np.column_stack([np.asarray(vals[n], dtype=np.float64)[order] for n in self.names])
+        # 1e-6 単位の整数に丸めてから累積する。float の累積誤差で「読み込む期間によって
+        # 値が微妙に変わる」ことを防ぐ（整数なら 2^53 まで誤差なし）。
+        m = np.column_stack([np.round(np.asarray(vals[n], dtype=np.float64)[order] * _Q) for n in self.names])
         self.cum = np.vstack([np.zeros((1, m.shape[1])), np.cumsum(m, axis=0)])
 
     def query(self, qkey, qday, window=None, start_day=None) -> pd.DataFrame:
@@ -84,7 +87,7 @@ class _Hist:
             lo_day = np.maximum(lo_day, np.asarray(start_day, dtype=np.int64))
         lo = np.searchsorted(self.comp, qkey * _K + lo_day, "left")
         lo = np.minimum(lo, hi)
-        s = self.cum[hi] - self.cum[lo]
+        s = (self.cum[hi] - self.cum[lo]) / _Q
         return pd.DataFrame(s, columns=self.names)
 
     def last_day(self, qkey, qday) -> np.ndarray:
@@ -150,8 +153,11 @@ def _apply_venue_fix(df: pd.DataFrame, fix: pd.DataFrame) -> pd.DataFrame:
     if fix.empty or not (df["jcd"] == "09").any():
         return df
     df = df.merge(fix, on=["hd", "rno"], how="left")
-    sel = (df["jcd"] == "09") & df["jcd_fixed"].notna()
-    df.loc[sel, "jcd"] = df.loc[sel, "jcd_fixed"]
+    sel = (df["jcd"] == "09") & (df["jcd_fixed"] == "23")
+    if sel.any():
+        print(f"[venue-fix] results/payouts の jcd=09 のうち {int(sel.sum())} 行を唐津(23)に付け替え"
+              "（取り込み直し後は 0 になるはず）", file=sys.stderr)
+    df.loc[sel, "jcd"] = "23"
     return df.drop(columns=["jcd_fixed"])
 
 
