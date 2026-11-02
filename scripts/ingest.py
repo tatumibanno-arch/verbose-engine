@@ -139,43 +139,56 @@ def ingest_schedule(dl, d) -> int:
     return upsert(con, "entries", rows)
 
 
+_K_BLOCK = re.compile(r"^(\d{2})KBGN\s*$(.*?)^\d{2}KEND", flags=re.M | re.S)
+
+
+def parse_performance_blocks(parser, files: dict[str, str]):
+    """成績（K）ファイルを場ごとのブロック（"NNKBGN"〜"NNKEND"）に切ってからパースする。
+
+    boatrace-lzh 0.1.0 の PerformanceParser は場名の部分一致で場を決めるため、
+    「唐津」が「津」（09）と判定され、さらに場名をキーにまとめるので津と唐津が同じ日に
+    開催すると片方が消える（2026-11-02 に判明）。場コードはブロック見出しの番号を正とする。
+    """
+    for name, text in files.items():
+        for m in _K_BLOCK.finditer(text):
+            yield m.group(1), parser.parse({f"{name}#{m.group(1)}": m.group(2)})
+
+
 def ingest_performance(dl, parser, d) -> tuple[int, int]:
     files = dl.download(d, "performance")
     if not files:
         return 0, 0
-    res = parser.parse(files)
     hd = to_hd(d)
-    result_rows = []
-    for e in res.entries:
-        ed = _asdict(e)
-        result_rows.append({
-            "hd": hd,
-            "jcd": str(_pick(ed, "venue_code", "jcd")).zfill(2),
-            "rno": int(_pick(ed, "race_number", "rno")),
-            "lane": int(_pick(ed, "boat_number", "lane", "waku")),
-            "position": _pick(ed, "result_position", "position", "rank"),
-            "data": ed,
-        })
-    payout_rows = []
-    for p in res.payouts:
-        pd_ = _asdict(p)
-        payout_rows.append({
-            "hd": hd,
-            "jcd": str(_pick(pd_, "venue_code", "jcd")).zfill(2),
-            "rno": int(_pick(pd_, "race_number", "rno")),
-            "ticket_type": _pick(pd_, "ticket_type", "type"),
-            "combination": str(_pick(pd_, "winning_combination", "combination")),
-            "payout": int(_pick(pd_, "payout", "amount", default=0)),
-        })
-    race_rows = []
-    for r in res.races:
-        rd = _asdict(r)
-        race_rows.append({
-            "hd": hd, "jcd": str(rd["venue_code"]).zfill(2), "rno": int(rd["race_number"]),
-            "race_name": rd.get("race_name"), "distance": rd.get("distance"),
-            "weather": rd.get("weather"), "wind_direction": rd.get("wind_direction"),
-            "wind_speed": rd.get("wind_speed"), "wave_height": rd.get("wave_height"), "data": rd,
-        })
+    result_rows, payout_rows, race_rows = [], [], []
+    for jcd, res in parse_performance_blocks(parser, files):
+        for e in res.entries:
+            ed = _asdict(e)
+            ed["venue_code"] = jcd
+            result_rows.append({
+                "hd": hd, "jcd": jcd,
+                "rno": int(ed["race_number"]),
+                "lane": int(ed["boat_number"]),
+                "position": ed.get("result_position"),
+                "data": ed,
+            })
+        for p in res.payouts:
+            pd_ = _asdict(p)
+            payout_rows.append({
+                "hd": hd, "jcd": jcd,
+                "rno": int(pd_["race_number"]),
+                "ticket_type": pd_["ticket_type"],
+                "combination": str(pd_["winning_combination"]),
+                "payout": int(pd_.get("payout") or 0),
+            })
+        for r in res.races:
+            rd = _asdict(r)
+            rd["venue_code"] = jcd
+            race_rows.append({
+                "hd": hd, "jcd": jcd, "rno": int(rd["race_number"]),
+                "race_name": rd.get("race_name"), "distance": rd.get("distance"),
+                "weather": rd.get("weather"), "wind_direction": rd.get("wind_direction"),
+                "wind_speed": rd.get("wind_speed"), "wave_height": rd.get("wave_height"), "data": rd,
+            })
     con = connect()
     upsert(con, "races", race_rows)
     return upsert(con, "results", result_rows), upsert(con, "payouts", payout_rows)
