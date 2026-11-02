@@ -91,6 +91,14 @@ TABLES = {
           races int, bets int, hits int, bet_total int, payout_total int,
           hit_rate real, roi real, note text
         )""",
+    # 日次検証のルール別（picks.reason の先頭のルール名ごと）。verifications は全ルールの合計
+    "verifications_by_rule": """
+        create table if not exists verifications_by_rule (
+          hd text not null, rule text not null, rules_version int,
+          races int, bets int, hits int, refunds int, bet_total int, payout_total int,
+          hit_rate real, roi real,
+          primary key (hd, rule)
+        )""",
 }
 
 KEY_COLS = {
@@ -100,6 +108,7 @@ KEY_COLS = {
     "payouts": ["hd", "jcd", "rno", "ticket_type", "combination"],
     "picks": ["hd", "jcd", "rno", "ticket_type", "combination"],
     "verifications": ["hd"],
+    "verifications_by_rule": ["hd", "rule"],
     "odds": ["hd", "jcd", "rno", "ticket_type", "combination"],
     "beforeinfo": ["hd", "jcd", "rno", "lane"],
     "racer_stats": ["hd", "racer_no"],
@@ -109,7 +118,12 @@ KEY_COLS = {
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     fresh = not DB_PATH.exists()
-    con = sqlite3.connect(DB_PATH, timeout=30)
+    # 並列取り込み（月単位×12本＋スクレイプ）で書き込みが重なるので、待ち時間を長めにとり WAL にする
+    con = sqlite3.connect(DB_PATH, timeout=600)
+    try:
+        con.execute("pragma journal_mode=wal")
+    except sqlite3.OperationalError:
+        pass
     for ddl in TABLES.values():
         con.execute(ddl)
     if fresh:
