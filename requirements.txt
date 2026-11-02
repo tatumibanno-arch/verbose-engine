@@ -1,4 +1,5 @@
-requests>=2.31
-beautifulsoup4>=4.12
+boatrace-lzh>=0.1.0
+pandas>=2.2
+pyarrow>=16
 pyyaml>=6.0
-supabase>=2.4
+requests>=2.31
