@@ -50,6 +50,17 @@ SEED = 20261102
 LANES = [1, 2, 3, 4, 5, 6]
 
 
+def load_adopt():
+    """採用の合格ライン（config/rules.yaml の evaluation.adopt_*）。検証用12か月に当てる。"""
+    import yaml
+    ev = yaml.safe_load((ROOT / "config" / "rules.yaml").read_text(encoding="utf-8")).get("evaluation", {})
+    return float(ev.get("adopt_min_total_roi", 1.0)), int(ev.get("adopt_min_win_months", 8)), \
+        int(ev.get("adopt_window_months", 12))
+
+
+ADOPT_ROI, ADOPT_WIN, ADOPT_WINDOW = load_adopt()
+
+
 # ---------------------------------------------------------------- 読み込み
 def connect():
     return sqlite3.connect(DB_URI, uri=True, timeout=60)
@@ -532,6 +543,9 @@ def main():
             P(f"  - 発見用 {lo}〜{hi}: {len(s)} セル → 検証用 中央値 {s.v_roi.median():.3f} / 加重 {s.v_ret.sum() / s.v_bet.sum():.3f} / >1.0 {(s.v_roi > 1).mean():.1%}")
     P("")
 
+    passed = (res.v_roi > ADOPT_ROI) & (res.v_win_m >= ADOPT_WIN)
+    P(f"- 採用の合格ライン（検証用{ADOPT_WINDOW}か月で通算>{ADOPT_ROI} かつ 勝ち月>={ADOPT_WIN}）: "
+      f"全セル中 {int(passed.sum())}、うち発見用でも>1.0: {int((passed & (res.d_roi > 1)).sum())}\n")
     rng = np.random.default_rng(SEED)
 
     def detail(df, Fdict, k):
@@ -550,6 +564,7 @@ def main():
                 "検証回収率[95%]": f"{r.v_roi:.3f} [{lo_v:.2f},{hi_v:.2f}]",
                 "検証勝ち月": f"{r.v_win_m}/{r.v_months}",
                 "検証月中央値": f"{r.v_med_m:.2f}", "検証最悪月": f"{r.v_worst_m:.2f}",
+                "合格": "○" if (r.v_roi > ADOPT_ROI and r.v_win_m >= ADOPT_WIN) else "×",
                 "検証月別": " ".join("-" if x is None else f"{x:.2f}" for x in r.v_monthly),
             })
         return pd.DataFrame(rows)
@@ -579,6 +594,12 @@ def main():
     P("## 発見用>1.0 のうち、検証用の勝ち月数が多い順（主評価）\n")
     tab = detail(vm, F_pre, 25)
     P(fmt_table(tab, list(tab.columns), list(tab.columns)))
+    P("")
+    pp = res[(res.d_roi > 1) & (res.v_roi > ADOPT_ROI) & (res.v_win_m >= ADOPT_WIN)].sort_values("v_roi", ascending=False)
+    P(f"## 合格ライン到達 かつ 発見用>1.0 のセル（{len(pp)}）\n")
+    if len(pp):
+        tab = detail(pp, F_pre, 50)
+        P(fmt_table(tab, list(tab.columns), list(tab.columns)))
     P("")
     # 偶然だった例
     gone = res[(res.d_roi > 1.3) & (res.d_races >= 500)].sort_values("d_roi", ascending=False)
