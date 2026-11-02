@@ -9,7 +9,7 @@ description: 過去データ（番組表・成績）を期間指定で一括取�
 2. **まず1日だけ試す**：`python scripts/ingest.py performance --date <直近の開催日>` と `schedule`。
    - 0件なら `boatrace-lzh` の項目名が想定と違う。`python -c "from boatrace_lzh import *; ..."` で1レコードの属性を表示し、`scripts/ingest.py` の `_pick()` 候補名を直す。
    - 直したら `notes/decisions.md` に「ingest の項目名を確定（実データ基準）」と1行。
-3. **期間を分けて取り込む**：1か月ずつ `--from/--to` で回す。1本のコマンドで3年分を回さない（途中で落ちたときに再開しやすいように）。
+3. **期間を分けて並列で取り込む**：1か月単位の `--from/--to` を1ジョブにして、成績・番組表 × 月のジョブを並列で回す（目安 `xargs -P 12`）。月単位にしておくと、落ちた月だけやり直せる。SQLite のロック待ちは `db.connect()` で30秒にしてある。
    - 例：`python scripts/ingest.py performance --from 20231101 --to 20231130`
    - `schedule` も同じ期間で。
 4. **件数確認**：`python scripts/db.py stats`。1開催日あたり entries ≈ 開催場数×12×6 を目安に抜けを見る。

@@ -13,7 +13,7 @@ boatrace-lzh ライブラリを使う（LZH 解凍に p7zip-full か lha が必�
   - 成績（K）は boatrace-lzh の PerformanceParser を使う。項目名は 2026-11-01 の実データで確認済み
     （venue_code / race_number / boat_number / result_position / ticket_type / winning_combination / payout）。
   - 番組表（B）はライブラリのパーサーが全場1ファイルの実データに対応していないため parse_schedule_text() で自前パースする。
-  - 一括取り込みは 1 日 2 ファイル × 日数。公式サーバーに負荷をかけないよう max_workers は 2 まで。
+  - 一括取り込みは 1 日 2 ファイル × 日数。速さが要るときは月単位のプロセスを並列に回す（backfill スキル参照）。
 """
 from __future__ import annotations
 
