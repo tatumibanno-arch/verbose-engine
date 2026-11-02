@@ -102,11 +102,19 @@ def load(con):
     pay = pay.join(key, on=["hd", "jcd", "rno"], how="inner")
 
     ent = pd.read_sql(
-        "select hd, jcd, rno, lane, grade, "
+        "select hd, jcd, rno, lane, racer_no, grade, "
         "json_extract(data,'$.national_win_rate') nwr, json_extract(data,'$.local_win_rate') lwr, "
         "json_extract(data,'$.motor_2ren_rate') m2, json_extract(data,'$.boat_2ren_rate') b2 "
         "from entries where hd between ? and ?", con, params=(DISC[0], VAL[1]))
     ent = ent.join(key, on=["hd", "jcd", "rno"], how="inner")
+    # 番組表と成績の選手が一致しないレースは番組表特徴を使わない（場コード取り違え等への保険）
+    rr = pd.read_sql("select hd, jcd, rno, lane, cast(json_extract(data,'$.racer_number') as int) rn from results "
+                     "where hd between ? and ?", con, params=(DISC[0], VAL[1]))
+    chk = ent[["hd", "jcd", "rno", "lane", "racer_no", "rid"]].merge(rr, on=["hd", "jcd", "rno", "lane"], how="left")
+    bad = chk.loc[chk.rn.notna() & (pd.to_numeric(chk.racer_no, errors="coerce") != chk.rn), "rid"].unique()
+    if len(bad):
+        print(f"[load] 番組表と成績の選手が不一致のレース {len(bad)} 件 → 番組表特徴から除外", file=sys.stderr)
+    ent = ent[~ent.rid.isin(bad)]
     print(f"[load] races={len(races)} payouts={len(pay)} entries={len(ent)} ({time.time()-t0:.0f}s)", file=sys.stderr)
     return races, void_strict, void_all, pay, ent
 
