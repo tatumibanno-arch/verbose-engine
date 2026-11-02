@@ -1,0 +1,29 @@
+# レース選定ルール（現行版）
+# これが唯一の正。変更したら notes/learnings.md に日付と理由を1行残す。
+version: 0
+updated: 2026-11-02
+note: 雛形。初版ルールは会話で決める。
+
+# 購入の前提（検証の回収率計算に使う）
+bet:
+  type: 3連単        # 3連単 / 2連単 / 単勝 など
+  unit_yen: 100      # 1点あたり購入額
+  max_points: 6      # 1レースあたり最大点数
+
+# 対象レースの絞り込み（AND条件）
+filters:
+  venues: []         # 空なら全場。例: ["24"]（大村）
+  race_numbers: []   # 空なら全レース。例: [1, 2, 3]
+  min_odds: null     # 1番人気オッズの下限
+  max_odds: null     # 1番人気オッズの上限
+
+# 選手・モーター条件（例。実装は select_races.py）
+conditions:
+  lane1_win_rate_min: null   # 1号艇の1コース1着率がこれ以上
+  lane1_grade: []            # 1号艇の級別。例: ["A1"]
+  motor_2ren_min: null       # 1号艇モーター2連率の下限
+
+# 買い目の作り方
+formation:
+  mode: fixed        # fixed（固定フォーメーション）/ dynamic
+  pattern: "1-23-234"
