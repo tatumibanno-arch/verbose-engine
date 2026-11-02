@@ -55,15 +55,29 @@ def candidate_races(con, hd: str, rules: dict) -> list[dict]:
     return out
 
 
-def build_picks(hd: str, races: list[dict], rules: dict) -> list[dict]:
+def spent_so_far(con) -> int:
+    """これまでの購入累計（検証済みの日の合計）。"""
+    r = con.execute("select coalesce(sum(bet_total), 0) from verifications").fetchone()
+    return int(r[0])
+
+
+def build_picks(hd: str, races: list[dict], rules: dict, spent: int = 0) -> list[dict]:
     b = rules["budget"]
     bet = rules["bet"]
     races = races[: b["max_races"]]            # TODO: 自信度順に並べてから切る
     if not races:
         return []
     combos = expand_formation(bet["formation"])
-    per_race = b["daily_yen"] // len(races)
-    per_point = max(b["unit_yen"], (per_race // len(combos)) // b["unit_yen"] * b["unit_yen"])
+    if b.get("allocation") == "equal" and b.get("daily_yen"):
+        per_race = b["daily_yen"] // len(races)
+        per_point = max(b["unit_yen"], (per_race // len(combos)) // b["unit_yen"] * b["unit_yen"])
+    else:
+        per_point = b["unit_yen"]              # fixed: 1点 unit_yen
+    # 実験全体の上限を超える日は選定しない
+    today_cost = per_point * len(combos) * len(races)
+    if b.get("total_yen") and spent + today_cost > b["total_yen"]:
+        print(f"予算上限: 累計 ¥{spent} + 今日 ¥{today_cost} > ¥{b['total_yen']} のため選定なし")
+        return []
     picks = []
     for r in races:
         for c in combos:
@@ -82,8 +96,9 @@ def write_note(hd: str, picks: list[dict], rules: dict) -> None:
     path = NOTES_DIR / "picks" / f"{d.isoformat()}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     total = sum(p["amount"] for p in picks)
+    b = rules["budget"]
     lines = [f"# {d.isoformat()} 選定（rules v{rules['version']}）", "",
-             f"- 合計 ¥{total} / 予算 ¥{rules['budget']['daily_yen']}", ""]
+             f"- 今日 ¥{total}（1点 ¥{b['unit_yen']}）/ 実験全体の上限 ¥{b['total_yen']}（累計は notes/daily 参照）", ""]
     cur = None
     for p in picks:
         key = (p["jcd"], p["rno"])
@@ -104,7 +119,7 @@ def main() -> int:
     rules = load_rules()
     con = connect()
     races = candidate_races(con, args.date, rules)
-    picks = build_picks(args.date, races, rules)
+    picks = build_picks(args.date, races, rules, spent=spent_so_far(con))
     print(f"{args.date}: 候補 {len(races)} レース → 買い目 {len(picks)} 点 / ¥{sum(p['amount'] for p in picks)}")
     if args.dry_run:
         print(json.dumps(picks, ensure_ascii=False, indent=2))
