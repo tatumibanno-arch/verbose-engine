@@ -69,6 +69,16 @@ def rolling(con, hd: str, days: int) -> dict | None:
     return {"days": r[0], "bet": r[1], "payout": r[2], "roi": round(r[2] / r[1], 3)}
 
 
+def month_to_date(con, hd: str) -> dict | None:
+    """暦月の1日から hd までの累計（月次回収率の途中経過）。"""
+    r = con.execute(
+        "select count(*), sum(bet_total), sum(payout_total) from verifications where hd between ? and ?",
+        (hd[:6] + "01", hd)).fetchone()
+    if not r or not r[1]:
+        return None
+    return {"days": r[0], "bet": r[1], "payout": r[2], "roi": round(r[2] / r[1], 3)}
+
+
 def write_daily_note(con, s: dict, rules: dict) -> None:
     d = from_hd(s["hd"])
     path = NOTES_DIR / "daily" / f"{d.isoformat()}.md"
@@ -76,6 +86,10 @@ def write_daily_note(con, s: dict, rules: dict) -> None:
     lines = [f"# {d.isoformat()} 検証（rules v{s['rules_version']}）", "",
              f"- 対象 {s['races']}レース / {s['bets']}点 / 的中 {s['hits']} / 的中率 {s['hit_rate']}",
              f"- 購入 ¥{s['bet_total']} / 払戻 ¥{s['payout_total']} / **回収率 {s['roi']}**", ""]
+    m = month_to_date(con, s["hd"])
+    if m:
+        lines.append(f"- **今月（{d.year}年{d.month}月）累計: {m['days']}日分 / 購入 ¥{m['bet']} / "
+                     f"払戻 ¥{m['payout']} / 月次回収率 {m['roi']}**")
     for n in rules["evaluation"]["rolling_days"]:
         r = rolling(con, s["hd"], n)
         if r:
@@ -92,7 +106,9 @@ def backtest(con, rules: dict, d0, d1) -> dict:
     """現行ルールを過去の出走表に当て、同じ買い方で回収率を見る。"""
     from select_races import build_picks, candidate_races
 
+    keys = ("races", "bets", "hits", "bet_total", "payout_total")
     agg = {"days": 0, "races": 0, "bets": 0, "hits": 0, "bet_total": 0, "payout_total": 0}
+    months: dict[str, dict] = {}
     d = d0
     while d <= d1:
         hd = to_hd(d)
@@ -101,9 +117,25 @@ def backtest(con, rules: dict, d0, d1) -> dict:
             s = evaluate(con, hd, picks)
             if s["bets"]:
                 agg["days"] += 1
-                for k in ("races", "bets", "hits", "bet_total", "payout_total"):
+                m = months.setdefault(hd[:6], {"month": f"{hd[:4]}-{hd[4:6]}", "days": 0, **{k: 0 for k in keys}})
+                m["days"] += 1
+                for k in keys:
                     agg[k] += s[k]
+                    m[k] += s[k]
         d += timedelta(days=1)
+    # 評価の単位は暦月。月次回収率 = その月の払戻合計 ÷ 購入合計（rules.yaml evaluation 参照）
+    target = rules["evaluation"].get("target_monthly_roi", 1.0)
+    monthly = []
+    for m in months.values():
+        m["roi"] = round(m["payout_total"] / m["bet_total"], 3) if m["bet_total"] else None
+        m["win"] = m["roi"] is not None and m["roi"] > target
+        monthly.append(m)
+    agg["monthly"] = monthly
+    agg["months"] = len(monthly)
+    agg["win_months"] = sum(m["win"] for m in monthly)
+    rois = sorted(m["roi"] for m in monthly if m["roi"] is not None)
+    agg["monthly_roi_median"] = rois[len(rois) // 2] if rois else None
+    agg["monthly_roi_worst"] = rois[0] if rois else None
     agg["hit_rate"] = round(agg["hits"] / agg["bets"], 3) if agg["bets"] else None
     agg["roi"] = round(agg["payout_total"] / agg["bet_total"], 3) if agg["bet_total"] else None
     agg["rules_version"] = rules["version"]

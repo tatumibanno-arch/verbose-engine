@@ -33,5 +33,7 @@ lane1:
 # 検証の評価軸
 evaluation:
   primary: roi                    # 回収率を最優先
+  period: month                   # 評価の単位は暦月（1日〜末日）。月次回収率 = 月の払戻合計 ÷ 購入合計
+  target_monthly_roi: 1.0         # これを超えた月を「勝ち月」とする
   rolling_days: [7, 30]           # 移動平均で見る日数
   min_sample_races: 50            # これ未満ではルールの良し悪しを断定しない
