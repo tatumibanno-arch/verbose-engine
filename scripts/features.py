@@ -161,17 +161,17 @@ def _apply_venue_fix(df: pd.DataFrame, fix: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=["jcd_fixed"])
 
 
-def load_results(con, hd_before: str) -> pd.DataFrame:
-    """hd_before より前の全成績（1艇1行）。唐津/津の取り違えを補正済み。"""
+def load_results(con, hd_before: str, hd_from: str = "00000000") -> pd.DataFrame:
+    """hd_from 以上 hd_before 未満の成績（1艇1行。既定は全期間）。唐津/津の取り違えを補正済み。"""
     q = """SELECT hd, jcd, rno, lane, position,
                   json_extract(data,'$.racer_number') AS racer,
                   json_extract(data,'$.motor_number') AS motor,
                   json_extract(data,'$.exhibition_time') AS ex,
                   json_extract(data,'$.entrance_position') AS course,
                   json_extract(data,'$.st_timing') AS st
-           FROM results WHERE hd < ?"""
-    h = pd.read_sql(q, con, params=(hd_before,))
-    h = _apply_venue_fix(h, venue_fix_map(con, "00000000", hd_before))
+           FROM results WHERE hd >= ? AND hd < ?"""
+    h = pd.read_sql(q, con, params=(hd_from, hd_before))
+    h = _apply_venue_fix(h, venue_fix_map(con, hd_from, hd_before))
     h["day"] = _day(h["hd"])
     h["jcd_i"] = h["jcd"].astype(int)
     for c in ("racer", "motor", "course"):
@@ -275,7 +275,11 @@ def _parse_series(s: pd.Series) -> pd.DataFrame:
 
 
 def build_features(con, hd_from: str, hd_to: str, stats_lag_days: int = 0,
-                   with_labels: bool = True, verbose: bool = False) -> pd.DataFrame:
+                   with_labels: bool = True, verbose: bool = False,
+                   hist_days: int | None = None) -> pd.DataFrame:
+    """hist_days: 読み込む成績の履歴を hd_from の何日前までに絞るか（None＝全期間）。
+    窓の最長はモーター 400日＋期待値表 365日なので、約800日以上あれば days_since_last_race
+    （長期休場明けの選手だけ）以外は全期間と同じ値になる。速さのため（運用の毎晩の予測用）。"""
     t0 = time.time()
 
     def log(msg):
@@ -285,7 +289,10 @@ def build_features(con, hd_from: str, hd_to: str, stats_lag_days: int = 0,
     T = load_targets(con, hd_from, hd_to)
     if T.empty:
         return T
-    H = load_results(con, hd_to)          # hd_to より前の全成績（各行の参照はさらに day 未満に絞る）
+    h_lo = "00000000"
+    if hist_days is not None:
+        h_lo = (pd.Timestamp(hd_from) - pd.Timedelta(days=int(hist_days))).strftime("%Y%m%d")
+    H = load_results(con, hd_to, h_lo)    # hd_to より前の成績（各行の参照はさらに day 未満に絞る）
     rs = load_racer_stats(con, hd_to)
     bounds = motor_boundaries(con, hd_to)
     log(f"loaded targets={len(T)} hist={len(H)} racer_stats={len(rs)}")

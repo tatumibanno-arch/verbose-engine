@@ -13,23 +13,29 @@ import requests
 
 from common import to_hd, today, tomorrow, venue_name
 from db import connect
+from select_races import rule_of
 
 
 def build_picks(hd: str) -> str:
     con = connect()
     rows = con.execute(
-        "select jcd, rno, ticket_type, combination, amount from picks where hd=? order by jcd, rno, combination",
+        "select jcd, rno, ticket_type, combination, amount, reason from picks where hd=? order by jcd, rno, combination",
         (hd,)).fetchall()
     if not rows:
         return f"🚤 {hd} 選定なし"
     total = sum(r[4] for r in rows)
-    lines = [f"🚤 {hd} 買い目 {len(rows)}点 / ¥{total}"]
-    cur = None
-    for jcd, rno, tt, combo, amt in rows:
-        if (jcd, rno) != cur:
-            lines.append(f"\n{venue_name(jcd)} {rno}R")
-            cur = (jcd, rno)
-        lines.append(f"  {combo} ¥{amt}")
+    lines = [f"🚤 {hd} 買い目 {len(rows)}点 / ¥{total}（詳細は notes/picks/）"]
+    by_rule: dict[str, list] = {}
+    for r in rows:
+        by_rule.setdefault(rule_of(r[5]), []).append(r)
+    for rule, rs in by_rule.items():
+        lines.append(f"\n■ {rule} {len(rs)}点 / ¥{sum(r[4] for r in rs)}")
+        cur = None
+        for jcd, rno, tt, combo, amt, _ in rs:
+            if (jcd, rno) != cur:
+                lines.append(f"{venue_name(jcd)} {rno}R")
+                cur = (jcd, rno)
+            lines.append(f"  {tt} {combo} ¥{amt}")
     return "\n".join(lines)
 
 
@@ -39,8 +45,13 @@ def build_verify(hd: str) -> str:
                     (hd,)).fetchone()
     if not r:
         return f"📊 {hd} 検証なし"
-    return (f"📊 {hd} 検証\n{r[0]}レース {r[1]}点 / 的中 {r[2]} ({r[5]})\n"
+    text = (f"📊 {hd} 検証\n{r[0]}レース {r[1]}点 / 的中 {r[2]} ({r[5]})\n"
             f"購入 ¥{r[3]} / 払戻 ¥{r[4]} / 回収率 {r[6]}")
+    for rule, bets, hits, bet, pay, roi in con.execute(
+            "select rule, bets, hits, bet_total, payout_total, roi from verifications_by_rule where hd=? order by rule",
+            (hd,)).fetchall():
+        text += f"\n・{rule}: {bets}点 的中{hits} ¥{bet}→¥{pay} 回収率 {roi}"
+    return text
 
 
 def send(text: str) -> None:

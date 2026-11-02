@@ -1,8 +1,12 @@
 # レース選定ルール（現行版）
 # これが唯一の正。変更したら version を上げ、notes/decisions.md に日付と理由を1行残す。
-version: 1
+version: 2
 updated: 2026-11-02
-note: 初版。まず「1号艇A1・1コース1着率高め」のレースだけを拾う保守的ルールで、回収率の土台を測る。
+note: v2 で strategies.tansho_ev_v1（単勝・1着確率モデル×予想配当、紙上運用）を追加。v1 の 1号艇A1 ルール（lane1_a1）はそのまま。
+
+# 下の budget / bet / filters / lane1 で作るルール（v1 からある「1号艇A1」）の名前。picks.reason の先頭に付く
+name: lane1_a1
+enabled: true
 
 # 予算・点数（上限はかけない。条件に合うレースがあれば何レースでも、無ければ 0 で構わない）
 budget:
@@ -40,3 +44,30 @@ evaluation:
   adopt_min_win_months: 8         # 採用条件2: 勝ち月がこの数以上
   rolling_days: [7, 30]           # 移動平均で見る日数
   min_sample_races: 50            # これ未満ではルールの良し悪しを断定しない
+
+# ---------------------------------------------------------------------------
+# 追加の戦略（それぞれ独立に買い目を作る。picks.reason の先頭に名前が付き、verify はルール別に集計する）
+strategies:
+  tansho_ev_v1:
+    enabled: true
+    note: >-
+      notes/analysis/trifecta.md 9節の提案。1着確率 ≥ min_win_prob かつ 1着確率×予想単勝配当/100 ≥ min_ev の艇の単勝。
+      発見用 1.017（勝ち月8/12）・検証用 1.012（8/12）。1.0 を超える幅は1〜2%なので、まず紙上で前向きに確かめる。
+    paper: 1                      # 1=紙上（記録だけ）。本番で買うと決めたら 0
+    ticket_type: tansho
+    unit_yen: 100                 # 1点の金額
+    min_win_prob: 0.20            # 1着確率の下限
+    min_ev: 1.0                   # 1着確率 × 予想単勝配当 / 100 の下限
+    venues: []                    # 空なら全場
+    race_numbers: []              # 空なら全レース
+    model:                        # scripts/model.py が読む。学習済みは data/models/<dir>/<YYYY-MM>/
+      dir: tansho_ev
+      stats_lag_days: 45          # 期別成績を算出期間の最終日から何日後に使うか（分析と同じ）
+      train_months: 24            # 各月、その月より前の何か月で学習するか（末尾 valid_months は早期打ち切り・τ用）
+      valid_months: 2
+      feature_history_days: 1100  # 特徴量に読む成績の履歴（日）。800日以上なら全期間とほぼ同じ値（速さのため）
+      payout_train_from: "2024-05"   # 予想配当モデルの学習に使う最初の月（OOS 予測がある月）
+      payout_first_month: "2024-11"  # 予想配当を出す最初の月（seed-history 用。分析と同じ）
+      recalib_from: "2024-05"        # 再校正 α に使う最初の月
+      recalib_window_months: 12
+      recalib_min_races: 3000
