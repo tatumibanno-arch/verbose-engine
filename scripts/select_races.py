@@ -64,7 +64,8 @@ def spent_so_far(con) -> int:
 def build_picks(hd: str, races: list[dict], rules: dict, spent: int = 0) -> list[dict]:
     b = rules["budget"]
     bet = rules["bet"]
-    races = races[: b["max_races"]]            # TODO: 自信度順に並べてから切る
+    if b.get("max_races"):
+        races = races[: b["max_races"]]        # TODO: 自信度順に並べてから切る
     if not races:
         return []
     combos = expand_formation(bet["formation"])
