@@ -51,6 +51,31 @@ TABLES = {
           rules_version int, reason text, paper int default 1,
           primary key (hd, jcd, rno, ticket_type, combination)
         )""",
+    # 締切時オッズ（boatrace.jp）: 1券種1組み合わせ1行。複勝は odds=下限, odds_max=上限
+    "odds": """
+        create table if not exists odds (
+          hd text not null, jcd text not null, rno int not null,
+          ticket_type text not null, combination text not null, odds real, odds_max real,
+          primary key (hd, jcd, rno, ticket_type, combination)
+        )""",
+    # 直前情報（boatrace.jp）: 1艇1行。展示タイム・チルト・部品交換・スタート展示・水面気象は data に
+    "beforeinfo": """
+        create table if not exists beforeinfo (
+          hd text not null, jcd text not null, rno int not null, lane int not null,
+          exhibition_time real, tilt real, start_course int, start_st real,
+          data text,
+          primary key (hd, jcd, rno, lane)
+        )""",
+    # 選手期別成績（公式 fan ファイル）: 1選手1期1行。hd は算出期間の最終日。
+    # レース日 hd より前に算出期間が終わった最新の行を使えば、未来の情報は混ざらない。
+    "racer_stats": """
+        create table if not exists racer_stats (
+          hd text not null, racer_no text not null,
+          year int, term int, period_from text, grade text,
+          win_rate real, top2_rate real, avg_st real,
+          data text,
+          primary key (hd, racer_no)
+        )""",
     # 日次検証
     "verifications": """
         create table if not exists verifications (
@@ -66,6 +91,9 @@ KEY_COLS = {
     "payouts": ["hd", "jcd", "rno", "ticket_type", "combination"],
     "picks": ["hd", "jcd", "rno", "ticket_type", "combination"],
     "verifications": ["hd"],
+    "odds": ["hd", "jcd", "rno", "ticket_type", "combination"],
+    "beforeinfo": ["hd", "jcd", "rno", "lane"],
+    "racer_stats": ["hd", "racer_no"],
 }
 
 
