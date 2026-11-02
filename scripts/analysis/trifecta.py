@@ -314,7 +314,8 @@ def cmd_predict(work: Path, only=None):
     log(f"features loaded rows={len(df)} races={len(df)//6} feats={len(feats)}")
     pdir = work / "pred"
     pdir.mkdir(exist_ok=True)
-    fits = [(m, [m, add_months(m, 1), add_months(m, 2)]) for m in PRE_FITS] + [(m, [m]) for m in TEST_MONTHS]
+    fits = [(m, [m, add_months(m, 1), add_months(m, 2)]) for m in PRE_FITS] + [(m, [m]) for m in TEST_MONTHS[:-1]]
+    fits.append((TEST_MONTHS[-1], [TEST_MONTHS[-1], add_months(TEST_MONTHS[-1], 1)]))  # 翌月分はオッズ参考用
     months = df["month"].to_numpy()
     for start, targets in fits:
         if only and start not in only:
