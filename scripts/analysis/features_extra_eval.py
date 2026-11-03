@@ -31,13 +31,11 @@ FEAT_DIR = SCRATCH / "trifecta" / "feat"
 BASE_CHUNKS = [("20231101", "20240430"), ("20240501", "20241031"), ("20241101", "20250430"),
                ("20250501", "20251031"), ("20251101", "20260430"), ("20260501", "20261031")]
 TEST_MONTHS = TF.TEST_MONTHS
-GROUPS = {"S": "sr_", "M": "mm_", "C": "ce_", "W": "pw_", "O": "ot_", "U": "sd_"}
+GROUPS = {"S": "sr_", "M": "mm_", "C": "ce_", "V": "vc_", "O": "ot_"}
 CONFIGS = {
     "base": [], "base_seed2": [],
-    "S": ["S"], "M": ["M"], "C": ["C"], "W": ["W"], "O": ["O"],
-    "ALL": ["S", "M", "C", "W", "O"],
-    "ALL_U": ["S", "M", "C", "W", "O", "U"],
-    "U": ["U"],
+    "S": ["S"], "M": ["M"], "C": ["C"], "V": ["V"], "O": ["O"],
+    "ALL": ["S", "M", "C", "V", "O"],
 }
 PARAMS = dict(TF.LGB_PARAMS, num_threads=3)
 
@@ -162,7 +160,7 @@ def cmd_report():
     print("\n月別 Δlogloss ×1000（負＝改善）")
     print(tab.round(2).to_string())
     # 追加特徴量の gain（ALL / ALL_U の平均順位）
-    for c in ("ALL", "ALL_U"):
+    for c in ("ALL",):
         gs = [pd.read_csv(rdir / f"gain_{c}_{m}.csv", index_col=0).iloc[:, 0] for m in full
               if (rdir / f"gain_{c}_{m}.csv").exists()]
         if not gs:

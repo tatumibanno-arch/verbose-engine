@@ -5,20 +5,18 @@
 使い方:
     python scripts/features_extra.py --from 20251101 --to 20261031 --out /path/extra.parquet
     python scripts/features_extra.py --leak-check 20260315,20261001 --workdir /path/work
-    python scripts/features_extra.py --from ... --to ... --out ... --research-sameday   # 研究専用列も付ける
 
 グループ（列名の接頭辞）:
     sr_  今節（同じ場で直近 MEET_WINDOW 日以内の前日まで）の展示タイム順位・ST・進入。前日までのみ
     mm_  モーターの直近（同じ入れ替え期・直近 MOTOR_RECENT_DAYS 日）の展示タイム順位・3着内率
     ce_  進入傾向（前付け）: 選手の前付け率、レース内に前付けする艇がいるか、1号艇がイン取りできる率
-    pw_  前日の水面: 同じ場の直近開催日（PREV_MAX_GAP 日以内）の風・波・天候と、その日のイン逃げ率など
+    vc_  場の直近の傾向: 同じ場の前日まで VENUE_COND_WINDOW 日の 1号艇1着率・1コース進入率・平均ST（成績だけから）
     ot_  その他: 地元支部か、ST の最近の傾向、直近の出走密度、内側/外側の艇との ST 差
-    sd_  【研究専用】当日のそのレースの天候・風・波（実測）。前夜には分からないので本番の選定に使ってはいけない。
-         既定では作らない（--research-sameday / sameday_weather=True のときだけ）。
+
+天候・風・波（races テーブル）は使わない（運用者の判断で見送り。notes/analysis/features_extra.md）。
 
 リーク対策:
     - 履歴は features._Hist で「レース日の0時より前」だけを集計する（当日の前半レースも入らない）。
-    - 前日の水面は races の「レース日より前の日」の行だけ。
     - 支部（branch）は番組表の値（前夜に分かる）。
     詳しくは notes/analysis/features_extra.md。
 """
@@ -41,7 +39,6 @@ MEET_WINDOW = 7            # 今節とみなす窓（同じ場・直近何日）
 MOTOR_RECENT_DAYS = 30     # モーターの直近（前の数節）の窓
 ENTRY_WINDOWS = (180, 365)  # 前付け率の窓（日）
 ST_SHORT, ST_LONG = 30, 365  # ST 傾向の窓
-PREV_MAX_GAP = 3           # 「前日の水面」とみなす直近開催日の最大の空き（日）
 VENUE_COND_WINDOW = 3      # 場の直近のイン逃げ率などの窓（日）
 HIST_DAYS = 420            # 読み込む成績の履歴（hd_from の何日前まで）
 
@@ -56,18 +53,6 @@ BRANCH_VENUES = {
 _rate = F._rate
 
 
-def _wind_uv(direction, speed):
-    """風向コード（1〜16 の16方位、1=北とみなす。17 以上や欠損は無風扱い）と風速 → (u, v)。
-    方位の意味は場ごとに水面の向きが違うので、モデルは場コードとの組み合わせで学ぶ前提。"""
-    d = pd.to_numeric(pd.Series(direction), errors="coerce").to_numpy(float)
-    s = np.nan_to_num(pd.to_numeric(pd.Series(speed), errors="coerce").to_numpy(float))
-    ok = (d >= 1) & (d <= 16)
-    ang = np.where(ok, (d - 1) * (2 * np.pi / 16), 0.0)
-    u = np.where(ok, s * np.sin(ang), 0.0)
-    v = np.where(ok, s * np.cos(ang), 0.0)
-    return u, v
-
-
 def _load_targets(con, hd_from, hd_to):
     q = """SELECT hd, jcd, rno, lane, racer_no, motor_no,
                   json_extract(data,'$.branch') AS branch
@@ -80,21 +65,7 @@ def _load_targets(con, hd_from, hd_to):
     return T.sort_values(["hd", "jcd", "rno", "lane"]).reset_index(drop=True)
 
 
-def _load_races(con, hd_lo, hd_hi_incl):
-    q = """SELECT hd, jcd, rno, weather, wind_direction, wind_speed, wave_height
-           FROM races WHERE hd >= ? AND hd <= ?"""
-    r = pd.read_sql(q, con, params=(hd_lo, hd_hi_incl))
-    r["day"] = F._day(r["hd"])
-    r["jcd_i"] = r["jcd"].astype(int)
-    r["u"], r["v"] = _wind_uv(r["wind_direction"], r["wind_speed"])
-    r["wind_speed"] = pd.to_numeric(r["wind_speed"], errors="coerce")
-    r["wave_height"] = pd.to_numeric(r["wave_height"], errors="coerce")
-    r["rain"] = (r["weather"].fillna("").str.contains("雨|雪")).astype(float)
-    return r
-
-
-def build_extra(con, hd_from: str, hd_to: str, sameday_weather: bool = False,
-                verbose: bool = False) -> pd.DataFrame:
+def build_extra(con, hd_from: str, hd_to: str, verbose: bool = False) -> pd.DataFrame:
     t0 = time.time()
 
     def log(msg):
@@ -232,31 +203,18 @@ def build_extra(con, hd_from: str, hd_to: str, sameday_weather: bool = False,
     out["ce_venue_wakunari365"] = _rate(S["waku"], S["n"])
     log("ce done")
 
-    # ---- pw_: 前日の水面（同じ場の直近開催日、PREV_MAX_GAP 日以内） ----
-    races = _load_races(con, h_lo, hd_to)
-    vd = (races.groupby(["jcd_i", "day"]).agg(pw_wind=("wind_speed", "mean"), pw_wind_max=("wind_speed", "max"),
-                                             pw_wave=("wave_height", "mean"), pw_u=("u", "mean"),
-                                             pw_v=("v", "mean"), pw_rain=("rain", "mean"))
-          .reset_index().sort_values("day"))
-    # 場の直近の結果: 1号艇の1着率・1コース進入率・平均ST（前日まで、VENUE_COND_WINDOW 日）
+    # ---- vc_: 場の直近の傾向（同じ場の前日まで VENUE_COND_WINDOW 日、成績だけ） ----
     l1 = hl == 1
     vc = {"n1": (ran & l1).astype(float), "w1": ((pos == 1) & l1).astype(float),
-          "c1": (has_c & l1).astype(float), "k1": ((hc == 1) & l1).astype(float), "n": ran.astype(float),
+          "c1": (has_c & l1).astype(float), "k1": ((hc == 1) & l1).astype(float),
           "st_n": vals["st_n"], "st": vals["st"],
           "in2": ((pos == 1) & (hl <= 2)).astype(float), "r": ((pos == 1)).astype(float)}
     S = F._Hist(H["jcd_i"].to_numpy(), H["day"].to_numpy(), vc).query(jc, tday, VENUE_COND_WINDOW)
-    out["pw_lane1_win"] = _rate(S["w1"], S["n1"])
-    out["pw_lane1_keep"] = _rate(S["k1"], S["c1"])
-    out["pw_in2_win"] = _rate(S["in2"], S["r"])
-    out["pw_venue_st"] = _rate(S["st"], S["st_n"])
-    left = pd.DataFrame({"jcd_i": jc, "day": tday, "_i": np.arange(len(out))}).sort_values("day")
-    m = pd.merge_asof(left, vd.rename(columns={"day": "pday"}).assign(day=lambda d: d["pday"]),
-                      on="day", by="jcd_i", allow_exact_matches=False, direction="backward")
-    m = m.sort_values("_i")
-    ok = (left.sort_values("_i")["day"].to_numpy() - m["pday"].to_numpy()) <= PREV_MAX_GAP
-    for c in ["pw_wind", "pw_wind_max", "pw_wave", "pw_u", "pw_v", "pw_rain"]:
-        out[c] = np.where(ok, m[c].to_numpy(), np.nan)
-    log("pw done")
+    out["vc_lane1_win"] = _rate(S["w1"], S["n1"])
+    out["vc_lane1_keep"] = _rate(S["k1"], S["c1"])
+    out["vc_in2_win"] = _rate(S["in2"], S["r"])
+    out["vc_venue_st"] = _rate(S["st"], S["st_n"])
+    log("vc done")
 
     # ---- ot_: その他 ----
     br = T["branch"].fillna("")
@@ -284,13 +242,6 @@ def build_extra(con, hd_from: str, hd_to: str, sameday_weather: bool = False,
     # ---- レース内の相対値 ----
     out = _relative(out, codes, li, ["sr_ex_res", "sr_ex_rank", "sr_st", "mm_ex_rank_shrunk", "ce_movein_shrunk"])
 
-    # ---- sd_: 【研究専用】当日の実測の天候 ----
-    if sameday_weather:
-        r = races[(races["hd"] >= hd_from) & (races["hd"] <= hd_to)][
-            ["hd", "jcd", "rno", "wind_speed", "wave_height", "u", "v", "rain"]]
-        r = r.rename(columns={"wind_speed": "sd_wind", "wave_height": "sd_wave", "u": "sd_u", "v": "sd_v",
-                              "rain": "sd_rain"})
-        out = out.merge(r.astype({"rno": out["rno"].dtype}), on=["hd", "jcd", "rno"], how="left")
     log("done")
     return out
 
@@ -313,7 +264,7 @@ def _relative(out, codes, li, feats):
 
 
 def leak_check(days, workdir: Path, db: Path = F.DB_PATH) -> pd.DataFrame:
-    """features.leak_check と同じ考え方: 切り詰めDB（races も hd より前だけ）と全データDB で一致するか。"""
+    """features.leak_check と同じ考え方: 切り詰めDBと全データDB で一致するか。"""
     workdir.mkdir(parents=True, exist_ok=True)
     full = F.connect_ro(db)
     ranged = build_extra(full, min(days), max(days))
@@ -327,10 +278,10 @@ def leak_check(days, workdir: Path, db: Path = F.DB_PATH) -> pd.DataFrame:
         lo_e = (pd.Timestamp(d) - pd.Timedelta(days=1100)).strftime("%Y%m%d")
         con = sqlite3.connect(f"file:{tmp}", uri=True, timeout=600)
         con.execute(f"ATTACH DATABASE 'file:{db}?mode=ro' AS src")
-        for t, cond in [("entries", "hd <= ?"), ("results", "hd < ?"), ("races", "hd < ?")]:
+        for t, cond in [("entries", "hd <= ?"), ("results", "hd < ?")]:
             sql = con.execute("SELECT sql FROM src.sqlite_master WHERE name=?", (t,)).fetchone()[0]
             con.execute(sql)
-            # entries はモーター入れ替え検出用に長めに（ENTRY_LOOKBACK 日）。results・races は履歴分だけ
+            # entries はモーター入れ替え検出用に長めに（ENTRY_LOOKBACK 日）。results は履歴分だけ
             lo_t = lo_e if t == "entries" else lo
             con.execute(f"INSERT INTO main.{t} SELECT * FROM src.{t} WHERE hd >= ? AND {cond}", (lo_t, d))
         con.commit()
@@ -361,7 +312,6 @@ def main(argv=None) -> int:
     ap.add_argument("--to", dest="hd_to")
     ap.add_argument("--out")
     ap.add_argument("--db", default=str(F.DB_PATH))
-    ap.add_argument("--research-sameday", action="store_true", help="【研究専用】当日の天候列 sd_* も付ける")
     ap.add_argument("--leak-check")
     ap.add_argument("--workdir", default="/tmp/features_extra_leakcheck")
     a = ap.parse_args(argv)
@@ -372,7 +322,7 @@ def main(argv=None) -> int:
     if not (a.hd_from and a.hd_to and a.out):
         ap.error("--from --to --out が必要")
     con = sqlite3.connect(f"file:{a.db}?mode=ro", uri=True, timeout=600)
-    df = build_extra(con, a.hd_from, a.hd_to, sameday_weather=a.research_sameday, verbose=True)
+    df = build_extra(con, a.hd_from, a.hd_to, verbose=True)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(a.out, compression="zstd", index=False)
     print(f"wrote {a.out}: {len(df)} rows x {df.shape[1]} cols", file=sys.stderr)
