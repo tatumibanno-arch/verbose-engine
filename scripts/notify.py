@@ -18,12 +18,8 @@ import requests
 
 from common import load_rules, to_hd, today, tomorrow, venue_name
 from db import connect
+from line_push import send_line
 from select_races import rule_of
-
-
-LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
-LINE_TEXT_MAX = 4900        # LINE のテキスト1通の上限は5000文字
-LINE_MESSAGES_MAX = 5       # push 1回で送れるのは5通まで
 
 
 def build_picks_line(hd: str) -> str:
@@ -94,38 +90,6 @@ def build_verify(hd: str) -> str:
             (hd,)).fetchall():
         text += f"\n・{rule}: {bets}点 的中{hits} ¥{bet}→¥{pay} 回収率 {roi}"
     return text
-
-
-def _chunks(text: str, size: int) -> list[str]:
-    """行の途中で切らずに size 文字以内に分ける。"""
-    out, cur = [], ""
-    for line in text.split("\n"):
-        if cur and len(cur) + 1 + len(line) > size:
-            out.append(cur)
-            cur = line
-        else:
-            cur = f"{cur}\n{line}" if cur else line
-    if cur:
-        out.append(cur)
-    return out
-
-
-def send_line(text: str) -> bool:
-    to = os.environ.get("LINE_USER_ID")
-    if not to:
-        return False
-    parts = _chunks(text, LINE_TEXT_MAX)
-    if len(parts) > LINE_MESSAGES_MAX:
-        parts = parts[:LINE_MESSAGES_MAX - 1] + ["…長いので残りは notes/picks/ を見てください"]
-    headers = {"Content-Type": "application/json"}
-    token = os.environ.get("LINE_CHANNEL_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    r = requests.post(LINE_PUSH_URL, headers=headers, timeout=15,
-                      json={"to": to, "messages": [{"type": "text", "text": t} for t in parts]})
-    if r.status_code != 200:
-        raise RuntimeError(f"LINE push failed: HTTP {r.status_code} {r.text[:200]}")
-    return True
 
 
 def send(text: str, line_text: str | None = None) -> None:

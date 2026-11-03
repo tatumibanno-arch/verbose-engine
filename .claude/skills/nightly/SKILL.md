@@ -10,6 +10,7 @@ description: 毎晩の全手順。今日の成績で検証→気づきを記録�
    - ERROR が出て0件なら、まだ全レース終わっていない可能性。`notes/daily/<今日>.md` に「成績未取得」とだけ書いて 4 へ進む。
 2. **検証**：`python scripts/verify.py --date <今日> --write-notes`
    - `notes/daily/<今日>.md` が生成される（ルール別に回収率・今月累計・直近7日/30日）。
+2b. **締切前アラートの紙上成績**：`python scripts/live_alert.py report --date <今日>`（`data/live/log/` のログと払戻を突き合わせ、`notes/live/<今日>.md` に出る。ログが無ければ「ログなし」で次へ）。日次ノートの気づきに1行入れる。
 3. **気づきを書く**（`notes/daily/<今日>.md` の「気づき」欄）。事実と仮説のみ：
    - 回収率を動かした主因のレース（高配当の的中 or 本命の取りこぼし）
    - ルールが拾い損ねた／拾いすぎたパターン
@@ -23,9 +24,10 @@ description: 毎晩の全手順。今日の成績で検証→気づきを記録�
 6. **買い目を作る**：`python scripts/select_races.py --date <明日>`
    - ルールごと（`lane1_a1`、`strategies:` の `tansho_ev_v1` など）に買い目を作り、`notes/picks/<明日>.md` にルール別の見出しで出る。候補0件のルールはその旨が出る。
    - 単勝ルールは翌日分の1着確率・予想配当を `data/models/tansho_ev/history.parquet` に追記する（翌月の学習に使う。消さない）。目安 1分（ほぼ特徴量づくり）。
+6b. **締切前アラートの準備**：`python scripts/live_alert.py prepare --date <明日>`（明日のレース一覧・締切時刻・選手名・モデル確率を `data/live/<明日>.csv` に書く。GitHub Actions の live_alert がこれを読んで当日の締切前にオッズを見る。**これが無いと翌日のアラートが出ない**）
 7. **通知**：`python scripts/notify.py --mode verify` と `--mode picks`（LINE_USER_ID があれば LINE に送る。失敗しても WARN を出すだけなので、そのまま次へ進む。WARN が出たら notes/daily に1行残す）
 8. **Parquet 書き出し**：`python scripts/db.py export`
-9. **コミット＆プッシュ**：`git add data/parquet data/models notes && git commit -m "nightly: <今日>" && git push`
+9. **コミット＆プッシュ**：`git add data/parquet data/models data/live notes && git commit -m "nightly: <今日>" && git push`
 
 月の集計（ルール別の月次回収率）は `python scripts/verify.py --monthly`。日次ノートもルール別に出る。
 

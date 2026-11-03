@@ -1,8 +1,8 @@
 # レース選定ルール（現行版）
 # これが唯一の正。変更したら version を上げ、notes/decisions.md に日付と理由を1行残す。
-version: 2
-updated: 2026-11-02
-note: v2 で strategies.tansho_ev_v1（単勝・1着確率モデル×予想配当、紙上運用）を追加。v1 の 1号艇A1 ルール（lane1_a1）はそのまま。
+version: 3
+updated: 2026-11-03
+note: v3 で strategies.live_tansho_poolgap_v1（締切前アラート、紙上）を追加。v2 で strategies.tansho_ev_v1（単勝・1着確率モデル×予想配当、紙上運用）を追加。v1 の 1号艇A1 ルール（lane1_a1）はそのまま。
 
 # 下の budget / bet / filters / lane1 で作るルール（v1 からある「1号艇A1」）の名前。picks.reason の先頭に付く
 name: lane1_a1
@@ -71,6 +71,28 @@ strategies:
       recalib_from: "2024-05"        # 再校正 α に使う最初の月
       recalib_window_months: 12
       recalib_min_races: 3000
+
+  live_tansho_poolgap_v1:
+    enabled: true
+    kind: live                    # 前夜の選定（select_races）では扱わない。scripts/live_alert.py が当日に動かす
+    note: >-
+      締切前アラート（2026-11-03 から紙上）。締切 lead_minutes 分前に単勝と3連単のオッズを取り、
+      3連単オッズから出した各艇の1着確率 ÷ 単勝オッズから出した1着確率 ≥ min_gap、かつ
+      3連単からの1着確率 ≥ min_p3 の艇の単勝を LINE で知らせる。モデルは使わない（市場どうしのずれ）。
+      締切確定オッズでの検証（2025-11〜2026-10）は 1日約11点・回収率 2.1・勝ち月 12/12 だが、
+      確定オッズを使った後付けの発見で、締切前のオッズでは未確認。最初の1か月は紙上で記録する。
+    paper: 1
+    ticket_type: tansho
+    unit_yen: 100
+    min_gap: 2.0                  # 3連単由来の1着確率 / 単勝由来の1着確率 の下限
+    min_p3: 0.20                  # 3連単由来の1着確率の下限
+    lead_minutes: 6               # 締切の何分前にオッズを見るか
+    min_lead_minutes: 2           # これより締切が近ければ見送る（買う時間が無い）
+    alert_window: ["09:00", "21:00"]   # LINE を送る時間帯（締切時刻で判定）。外は記録だけ
+    slots:                        # GitHub Actions のジョブ1本が受け持つ締切時刻の範囲（1本6時間まで）
+      - ["08:00", "13:00"]
+      - ["13:00", "17:30"]
+      - ["17:30", "23:00"]
 
 # ---------------------------------------------------------------------------
 # 通知（選定ルールではない。LINE/Slack に送る文面の出し方だけ）
