@@ -512,18 +512,26 @@ def cmd_check(work: Path):
     print(txt)
 
 
-# ============================================================== v2: 事前に決めた候補（notes/analysis/nirensho_v2_plan.md）
+# ============================================================== v2: 事前に決めた候補（notes/analysis/exacta_trifecta_v2_plan.md）
 # この一覧は評価の前に plan に書いたもの。中身を変えたら別の候補として plan に書き足す（数え直す）。
-# (名前, q̂2 の作り, 買い方 'max1' | 'all', 確率の下限, EV の下限)
+# (名前, 券種 2|3, 推定 'agg'|'direct'|'g3'|'g3cal', 買い方 'topk'|'all', k, 確率の下限, EV の下限)
 V2_CANDIDATES = [
-    ("C1:EV最大1点:agg:p>=0.05:EV>=1.1", "agg", "max1", 0.05, 1.1),
-    ("C2:EV最大1点:agg:p>=0.05:EV>=1.2", "agg", "max1", 0.05, 1.2),   # 主仮説（前回の候補そのもの）
-    ("C3:EV最大1点:agg:p>=0.05:EV>=1.3", "agg", "max1", 0.05, 1.3),
-    ("C4:EV最大1点:agg:p>=0.10:EV>=1.2", "agg", "max1", 0.10, 1.2),
-    ("C5:EV全部:agg:p>=0.10:EV>=1.1", "agg", "all", 0.10, 1.1),
-    ("C6:EV最大1点:direct:p>=0.05:EV>=1.2", "direct", "max1", 0.05, 1.2),  # 2連単オッズで q̂2 を直接学習できたときだけ
+    # ---- 2連単（確率は 3段モデルの集計 P2、配当は g2+） ----
+    ("C1:2T:EV最大1点:agg:p>=0.05:EV>=1.1", 2, "agg", "topk", 1, 0.05, 1.1),
+    ("C2:2T:EV最大1点:agg:p>=0.05:EV>=1.2", 2, "agg", "topk", 1, 0.05, 1.2),   # 2連単の主仮説（前回の候補そのもの）
+    ("C3:2T:EV最大1点:agg:p>=0.05:EV>=1.3", 2, "agg", "topk", 1, 0.05, 1.3),
+    ("C4:2T:EV最大1点:agg:p>=0.10:EV>=1.2", 2, "agg", "topk", 1, 0.10, 1.2),
+    ("C5:2T:EV全部:agg:p>=0.10:EV>=1.1", 2, "agg", "all", 0, 0.10, 1.1),
+    ("C6:2T:EV最大1点:direct:p>=0.05:EV>=1.2", 2, "direct", "topk", 1, 0.05, 1.2),  # 2連単オッズで q̂2 を直接学習できたときだけ
+    # ---- 3連単（確率は 3段モデル P、配当は g+。q̂ は 3連単オッズのウォークフォワード版） ----
+    ("T1:3T:EV最大1点:g+:p>=0.01:EV>=1.2", 3, "g3", "topk", 1, 0.01, 1.2),     # 3連単の主仮説
+    ("T2:3T:EV最大1点:g+:p>=0.01:EV>=1.4", 3, "g3", "topk", 1, 0.01, 1.4),
+    ("T3:3T:EV最大1点:g+:p>=0.02:EV>=1.2", 3, "g3", "topk", 1, 0.02, 1.2),
+    ("T4:3T:EV上位3点:g+:p>=0.01:EV>=1.2", 3, "g3", "topk", 3, 0.01, 1.2),
+    ("T5:3T:EV全部:g+:p>=0.02:EV>=1.2", 3, "g3", "all", 0, 0.02, 1.2),
+    ("T6:3T:EV最大1点:g+較正:p>=0.01:EV>=1.2", 3, "g3cal", "topk", 1, 0.01, 1.2),  # calibrate.py の較正が使えるときだけ
 ]
-V2_PRIMARY = "C2:EV最大1点:agg:p>=0.05:EV>=1.2"
+V2_PRIMARY = {2: "C2:2T:EV最大1点:agg:p>=0.05:EV>=1.2", 3: "T1:3T:EV最大1点:g+:p>=0.01:EV>=1.2"}
 V2_MIN_DISC_MONTHS = 6
 V2_MIN_DISC_HITS = 100
 
@@ -540,98 +548,123 @@ def v2_windows(strict_months, n_valid):
     return sm[:-n_valid] if len(sm) > n_valid else [], sm[-n_valid:]
 
 
-def cmd_v2eval(work: Path, smoke=False):
-    races, z = M.load(work)
-    month = races.month.to_numpy()
-    P2 = z["P"].astype(float) @ AGG
-    void2 = z["lane_void"][:, PAIRS].any(2)
-    hit2, pay2 = races.hit2.to_numpy(), races.pay2.to_numpy()
-    W2 = np.zeros(P2.shape, bool)
-    W2[np.where(hit2 >= 0)[0], hit2[hit2 >= 0]] = True
-    nwin, roi_line, win_line = _rules_eval()
-    fm = set(M.full_months(races))
-    rng = np.random.default_rng(0)
-    L = ["## 2連単 v2 の評価（事前に決めた候補、厳密 q̂ のウォークフォワード）", ""]
-    if smoke:
-        L.append("**動作確認（smoke）: 月数が足りないので数字は判断に使わない。**")
-        L.append("")
-    G2 = {}
+def _v2_estimators(work, races, z):
+    """推定名 → 配当の予想 G（レース×買い目、厳密でない月は NaN）。"""
+    G = {}
     for src in ["agg", "direct"]:
         f = M.mb(work) / f"g2wf_{src}.npz"
         if f.exists():
-            G2[src] = np.load(f)["G2"].astype(float)
-    rows, monthly = [], {}
+            G[src] = np.load(f)["G2"].astype(float)
+    f = M.mb(work) / "g3wf.npz"
+    if f.exists():
+        G["g3"] = np.load(f)["G3"].astype(float)
+        try:   # 別の作業の較正（scripts/analysis/calibrate.py）。月 m の較正を m より前だけで作る関数があるときだけ使う
+            import calibrate as CAL
+            if hasattr(CAL, "wf_calibrate_g3"):
+                G["g3cal"] = np.asarray(CAL.wf_calibrate_g3(G["g3"], races, z), float)
+        except ImportError:
+            pass
+    return G
+
+
+def cmd_v2eval(work: Path, smoke=False):
+    races, z = M.load(work)
+    month = races.month.to_numpy()
+    P3 = z["P"].astype(float)
+    P2 = P3 @ AGG
+    lv = z["lane_void"]
+    fam = {2: dict(P=P2, void=lv[:, PAIRS].any(2), hit=races.hit2.to_numpy(), pay=races.pay2.to_numpy()),
+           3: dict(P=P3, void=lv[:, PERMS].any(2), hit=races.hit.to_numpy(), pay=races.payout.to_numpy())}
+    for f in fam.values():
+        W = np.zeros(f["P"].shape, bool)
+        W[np.where(f["hit"] >= 0)[0], f["hit"][f["hit"] >= 0]] = True
+        f["W"] = W
+    nwin, roi_line, win_line = _rules_eval()
+    fm = set(M.full_months(races))
+    rng = np.random.default_rng(0)
+    L = ["## 2連単・3連単 v2 の評価（事前に決めた候補、厳密 q̂ のウォークフォワード）", ""]
+    if smoke:
+        L += ["**動作確認（smoke）: 月数が足りないので数字は判断に使わない。**", ""]
+    G = _v2_estimators(work, races, z)
     windows = {}
-    for src, G in G2.items():
-        ok = np.isfinite(G).all(1)
-        sm = sorted(m for m in set(month[ok]) if m in fm)
+    for src, g in G.items():
+        sm = sorted(m for m in set(month[np.isfinite(g).all(1)]) if m in fm)
         windows[src] = v2_windows(sm, nwin)
-    L.append("厳密な月（q̂ はその月より前のオッズだけ、g2+ はその月より前の当たりだけで学習）:")
+    L.append("厳密な月（q̂ はその月より前のオッズだけ、配当モデルはその月より前の当たりだけで学習）:")
     for src, (d, v) in windows.items():
-        L.append(f"- q̂2={src}: 発見用 {d[0] if d else '-'}〜{d[-1] if d else '-'}（{len(d)}か月）、"
+        L.append(f"- 推定 {src}: 発見用 {d[0] if d else '-'}〜{d[-1] if d else '-'}（{len(d)}か月）、"
                  f"検証用 {v[0] if v else '-'}〜{v[-1] if v else '-'}（{len(v)}か月）")
     L.append("")
-    for name, src, kind, pmin, tau in V2_CANDIDATES:
-        if src not in G2:
-            rows.append(dict(cand=name, 状態=f"q̂2={src} が無い（未評価）"))
+    rows, monthly = [], {}
+    for name, kind, src, how, k, pmin, tau in V2_CANDIDATES:
+        if src not in G:
+            rows.append(dict(cand=name, 券種=kind, 状態=f"推定 {src} が無い（未評価）"))
             continue
-        G = G2[src]
-        ok = (hit2 >= 0) & np.isfinite(G).all(1)
-        EV = P2 * np.nan_to_num(G) / 100
-        mk = ev_topk_mask(EV, P2, pmin, 1, tau) if kind == "max1" else (EV >= tau) & (P2 >= pmin)
-        mk = mk & ~void2 & ok[:, None]
-        cost = mk.sum(1) * 100.0
-        ret = (mk & W2).any(1) * pay2
-        df = pd.DataFrame(dict(hd=races.hd, month=month, cost=cost, ret=ret, hit=(mk & W2).any(1), bets=mk.sum(1)))
+        f = fam[kind]
+        g = G[src]
+        ok = (f["hit"] >= 0) & np.isfinite(g).all(1)
+        EV = f["P"] * np.nan_to_num(g) / 100
+        mk = ev_topk_mask(EV, f["P"], pmin, k, tau) if how == "topk" else (EV >= tau) & (f["P"] >= pmin)
+        mk = mk & ~f["void"] & ok[:, None]
+        hitm = (mk & f["W"]).any(1)
+        df = pd.DataFrame(dict(hd=races.hd, month=month, cost=mk.sum(1) * 100.0, ret=hitm * f["pay"], hit=hitm, bets=mk.sum(1)))
         disc, valid = windows[src]
-        r = dict(cand=name)
+        r = dict(cand=name, 券種=kind)
         for per, ms in [("発見", disc), ("検証", valid)]:
             x = df[df.month.isin(ms)]
             if len(ms) == 0 or x.cost.sum() == 0:
-                r[f"{per}:回収率"] = np.nan
                 continue
             dd = x.groupby("hd")[["cost", "ret"]].sum()
             cc, rr = dd.cost.to_numpy(), dd.ret.to_numpy()
             bs = [rr[i].sum() / max(cc[i].sum(), 1) for i in (rng.integers(0, len(dd), len(dd)) for _ in range(1000))]
-            mm = x.groupby("month")[["cost", "ret"]].sum().reindex(ms).fillna(0)
+            mm = x.groupby("month").agg(cost=("cost", "sum"), ret=("ret", "sum"), hit=("hit", "sum")).reindex(ms).fillna(0)
             mr = np.where(mm.cost > 0, mm.ret / mm.cost.clip(lower=1), np.nan)
             r[f"{per}:回収率"] = x.ret.sum() / x.cost.sum()
             r[f"{per}:90%区間"] = f"{np.quantile(bs, .05):.2f}〜{np.quantile(bs, .95):.2f}"
             r[f"{per}:勝ち月"] = f"{int(np.nansum(mr > 1))}/{len(ms)}"
             r[f"{per}:最悪月"] = np.nanmin(mr) if np.isfinite(mr).any() else np.nan
             r[f"{per}:月の点数"] = x.bets.sum() / len(ms)
+            r[f"{per}:月の的中"] = mm.hit.mean()
             r[f"{per}:的中"] = int(x.hit.sum())
             r[f"_{per}_win"] = int(np.nansum(mr > 1))
+            r[f"_{per}_n"] = len(ms)
         monthly[name] = df.groupby("month").agg(点=("bets", "sum"), 的中=("hit", "sum"), 購入=("cost", "sum"), 払戻=("ret", "sum"))
         rows.append(r)
     res = pd.DataFrame(rows)
     show = [c for c in res.columns if not c.startswith("_")]
-    L.append(f"### 候補 {len(V2_CANDIDATES)} 本（plan に事前登録。評価した数: {int(res['発見:回収率'].notna().sum() if '発見:回収率' in res else 0)}）")
+    nev = int(res["発見:回収率"].notna().sum()) if "発見:回収率" in res else 0
+    L.append(f"### 候補 {len(V2_CANDIDATES)} 本（plan に事前登録。うち評価できた {nev} 本）")
     L.append(res[show].to_markdown(index=False, floatfmt=".3f"))
     L.append("")
-    # 事前に決めた選び方: 発見用の的中≥V2_MIN_DISC_HITS の中で発見用の回収率が最良の1本 → 検証用で合格ラインを見る
-    sel = None
-    if "発見:的中" in res:
-        el = res[(res["発見:的中"] >= V2_MIN_DISC_HITS) & res["発見:回収率"].notna()]
-        if len(el):
-            sel = el.sort_values("発見:回収率", ascending=False).iloc[0]
-    ndisc = max((len(d) for d, _ in windows.values()), default=0)
-    L.append(f"### 判定（合格ライン: 検証用 {nwin} か月で通算 > {roi_line}、勝ち月 ≥ {win_line}。rules.yaml evaluation）")
-    if ndisc < V2_MIN_DISC_MONTHS and not smoke:
-        L.append(f"発見用の厳密な月が {ndisc} か月（< {V2_MIN_DISC_MONTHS}）。判定しない。")
-    for lab, rr in [("発見用で選んだ1本", sel), ("主仮説 " + V2_PRIMARY, res[res.cand == V2_PRIMARY].iloc[0] if (res.cand == V2_PRIMARY).any() else None)]:
-        if rr is None or "検証:回収率" not in rr or not np.isfinite(rr.get("検証:回収率", np.nan)):
-            L.append(f"- {lab}: なし")
-            continue
-        nv = len(windows[[s for n, s, *_ in V2_CANDIDATES if n == rr.cand][0]][1])
-        passed = nv >= nwin and rr["検証:回収率"] > roi_line and rr["_検証_win"] >= win_line
-        L.append(f"- {lab}: {rr.cand} → 検証用 {rr['検証:回収率']:.3f} 勝ち月 {rr['検証:勝ち月']}（{nv}か月）→ "
-                 f"{'合格ラインを満たす（次は decisions.md に登録して前向きに確かめる）' if passed else '不合格'}")
+    L.append(f"### 判定（券種ごとに1本。合格ライン: 検証用 {nwin} か月で通算 > {roi_line}、勝ち月 ≥ {win_line}。rules.yaml evaluation）")
+    picks = []
+    for kind in (2, 3):
+        rk = res[res.券種 == kind]
+        sel = None
+        if "発見:的中" in rk:
+            el = rk[(rk["発見:的中"] >= V2_MIN_DISC_HITS) & rk["発見:回収率"].notna()]
+            if len(el):
+                sel = el.sort_values("発見:回収率", ascending=False).iloc[0]
+        prim = rk[rk.cand == V2_PRIMARY[kind]]
+        for lab, rr in [(f"{kind}連単: 発見用で選んだ1本", sel), (f"{kind}連単: 主仮説", prim.iloc[0] if len(prim) else None)]:
+            if rr is None or not np.isfinite(rr.get("検証:回収率", np.nan)):
+                L.append(f"- {lab}: なし")
+                continue
+            nd, nv = int(rr.get("_発見_n", 0) or 0), int(rr["_検証_n"])
+            if nd < V2_MIN_DISC_MONTHS and not smoke:
+                verdict = f"発見用が {nd} か月（< {V2_MIN_DISC_MONTHS}）なので判定しない"
+            elif nv >= nwin and rr["検証:回収率"] > roi_line and rr["_検証_win"] >= win_line:
+                verdict = "合格ラインを満たす（次は decisions.md に事前登録して前向きに確かめる）"
+            else:
+                verdict = "不合格"
+            L.append(f"- {lab}: {rr.cand} → 検証用 {rr['検証:回収率']:.3f} 勝ち月 {rr['検証:勝ち月']}（{nv}か月）→ {verdict}")
+            picks.append(rr.cand)
     L.append("")
-    for name in dict.fromkeys([n for n in [V2_PRIMARY, sel.cand if sel is not None else None] if n in monthly]):
+    for name in dict.fromkeys(picks):
         mt = monthly[name]
         mt["回収率"] = mt.払戻 / mt.購入.clip(lower=1)
-        d, v = windows[[s for n, s, *_ in V2_CANDIDATES if n == name][0]]
+        src = [s for n, _, s, *_ in V2_CANDIDATES if n == name][0]
+        d, v = windows[src]
         mt = mt.loc[[m for m in d + v if m in mt.index]]
         L.append(f"### 月別: {name}")
         L.append(mt[["点", "的中", "回収率"]].to_markdown(floatfmt=".3f"))

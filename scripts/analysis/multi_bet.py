@@ -14,6 +14,7 @@ v2（2026-11-03〜、notes/analysis/nirensho_v2_plan.md）:
     python scripts/analysis/multi_bet.py oddswf  [--months ...]   # 3連単 q̂ のウォークフォワード（各月 m: m より前のオッズ月すべてで学習）
     python scripts/analysis/multi_bet.py odds2wf [--months ...]   # 2連単の締切オッズから直接 q̂2 を学習（2連単オッズの揃った月が要る）
     python scripts/analysis/multi_bet.py g2wf --q2 agg|direct [--months ...]  # 厳密 q̂ だけを使う g2+
+    python scripts/analysis/multi_bet.py g3wf [--months ...]      # 厳密 q̂ だけを使う 3連単 g+
     python scripts/analysis/multi_bet.py v2eval [--smoke]  # 事前に決めた候補（plan）を発見用・検証用で評価
 
 リークの扱い:
@@ -640,10 +641,58 @@ def cmd_g2wf(work: Path, q2src="agg", months=None):
     log(f"g2wf ({q2src}) 厳密な月: {done}")
 
 
+def g3p_X(races, z, ix, Q3):
+    """3連単 g+ の素性（cmd_gplus の X3 と同じ形。q̂ はウォークフォワード版）。"""
+    P = z["P"][ix].astype(float)
+    X = T.g_features(races.iloc[ix], P, z["P1"][ix].astype(float), z["nwr"][ix], z["grd"][ix])
+    q = Q3[ix]
+    X["lqh"] = np.log(q).ravel()
+    X["lqh_rank"] = ((-q).argsort(1).argsort(1) + 1).ravel()
+    X["dlog"] = X["logP"] - X["lqh"]
+    return X.to_numpy(np.float32)
+
+
+def cmd_g3wf(work: Path, months=None):
+    """厳密な月 m の 3連単 g+: m より前の当たった3連単（q̂ はウォークフォワード版）で学習し、m を予測。"""
+    import lightgbm as lgb
+    races, z = load(work)
+    LQ3, strict, _ = load_wf(work, "q3", races, 120)
+    month = races.month.to_numpy()
+    hit, pay = races.hit.to_numpy(), races.payout.to_numpy()
+    okq = np.isfinite(LQ3).all(1)
+    Q3 = np.full(LQ3.shape, np.nan)
+    Q3[okq] = norm_q(LQ3[okq].astype(float))
+    f = mb(work) / "g3wf.npz"
+    G = np.load(f)["G3"] if f.exists() else np.full((len(races), 120), np.nan, np.float32)
+    if G.shape != (len(races), 120):
+        G = np.full((len(races), 120), np.nan, np.float32)
+    fm = set(full_months(races))
+    sel = [m for m in _months_arg(months, races) if m >= T.EVAL_FIRST_MONTH and m in fm]
+    XH = {}
+    for m in sorted(set(month)):
+        ix = np.where((month == m) & (hit >= 0) & okq)[0]
+        if len(ix):
+            XH[m] = (g3p_X(races, z, ix, Q3).reshape(len(ix), 120, -1)[np.arange(len(ix)), hit[ix]], pay[ix])
+    done = []
+    for m in sel:
+        te = np.where(month == m)[0]
+        if not strict[te].all():
+            G[te] = np.nan
+            continue
+        prior = [x for x in XH if x < m]
+        mdl = lgb.train(GP_PARAMS, lgb.Dataset(np.concatenate([XH[x][0] for x in prior]), np.concatenate([XH[x][1] for x in prior])),
+                        T.G_ROUNDS)
+        G[te] = np.concatenate([mdl.predict(g3p_X(races, z, te[s:s + 4000], Q3), num_threads=NT).reshape(-1, 120)
+                                for s in range(0, len(te), 4000)])
+        done.append(m)
+    np.savez(f, G3=G)
+    log(f"g3wf 厳密な月: {done}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["prep", "coverage", "oddsmodel", "report_odds", "gplus", "report_g", "market", "bets",
-                                    "report_bets", "tansho_combo", "check", "oddswf", "odds2wf", "g2wf", "v2eval"])
+                                    "report_bets", "tansho_combo", "check", "oddswf", "odds2wf", "g2wf", "g3wf", "v2eval"])
     ap.add_argument("--workdir", default=str(T.DEFAULT_WORK))
     ap.add_argument("--months", help="oddswf / odds2wf / g2wf: 対象の月（カンマ区切り）。省略で全月")
     ap.add_argument("--q2", default="agg", choices=["agg", "direct"], help="g2wf: q̂2 の作り")
@@ -659,6 +708,8 @@ def main():
         {"oddswf": cmd_oddswf, "odds2wf": cmd_odds2wf}[a.cmd](w, a.months)
     elif a.cmd == "g2wf":
         cmd_g2wf(w, a.q2, a.months)
+    elif a.cmd == "g3wf":
+        cmd_g3wf(w, a.months)
     elif a.cmd == "v2eval":
         import multi_bet_eval as E
         E.cmd_v2eval(w, smoke=a.smoke)
