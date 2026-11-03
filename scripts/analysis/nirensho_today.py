@@ -5,8 +5,10 @@
 
 本番と同じく前夜の情報だけを使う:
   * 着順確率 P: nirensho.py today が作った pred/today_<date>.npz（予測月の直前24か月で学習）
-  * 予想市場確率 q̂: 3連単の締切オッズがある全月（2026-03〜11-01）で学習した「前夜の情報 → 締切オッズ」モデル
-  * 予想配当 g2+: 予測日より前の当たった2連単すべてで学習（素性に q̂ を含む）
+  * 予想市場確率 q̂: 当日の月より前の「3連単オッズの揃った月」（multi_bet.py prep が判定）すべてで学習した
+    「前夜の情報 → 締切オッズ」モデル。2連単オッズの揃った月が MIN_PRIOR_ODDS 以上あれば、2連単は直接学習した q̂2
+  * 予想配当 g2+: 予測日より前の当たった2連単すべてで学習（素性に q̂2。学習行の q̂2 は oddswf のウォークフォワード版）
+  * 前提: multi_bet.py prep → oddswf（direct なら odds2wf も）が済んでいること
 
 使い方:
     python scripts/analysis/nirensho_today.py --date 20261103
@@ -33,6 +35,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", required=True)
     ap.add_argument("--workdir", default=str(T.DEFAULT_WORK))
+    ap.add_argument("--q2", default="auto", choices=["auto", "agg", "direct"],
+                    help="q̂2 の作り。auto: 2連単オッズの揃った月が MIN_PRIOR_ODDS 以上あれば direct")
     a = ap.parse_args()
     work = Path(a.workdir)
     T.WORK = work
@@ -52,48 +56,38 @@ def main():
     ex_t = np.stack([te[c].to_numpy(np.float32).reshape(-1, 6) for c in M.EXTRA], 2)
     zt_d = dict(P=Pt.astype(np.float32), P1=P1t.astype(np.float32), nwr=nwr_t, grd=grd_t, ex=ex_t)
 
-    # ---- 予想オッズモデル（オッズのある全月） ----
+    # ---- 予想オッズモデル: 当日の月より前の「揃ったオッズ月」すべて（v2 の oddswf と同じ作り） ----
     races, z = M.load(work)
+    month = races.month.to_numpy()
+    cur = f"{D[:4]}-{D[4:6]}"
+    om3 = [m for m in M.odds_months(work, "3t") if m < cur]
     O = z["O"].astype(float)
-    has = np.isfinite(O).all(1) & (O > 0).all(1)
-    q, _ = M.market_q(np.where(has[:, None], O, 1.0))
-    rows = np.where(has)[0]
-    Xall = M.odds_features(races, z, rows)
-    cols = list(Xall.columns)
-    Xn = Xall.to_numpy(np.float32)
-    del Xall
-    y = np.log(q[rows]).ravel().astype(np.float32)
-    T.log(f"odds model train races={len(rows)}")
-    om = lgb.train(M.ODDS_PARAMS, lgb.Dataset(Xn, y, feature_name=cols, free_raw_data=True), M.ODDS_ROUNDS)
-    del Xn, y
-    LQt = om.predict(M.odds_features(tr_races, zt_d, np.arange(len(tr_races))).to_numpy(np.float32),
-                     num_threads=M.NT).reshape(-1, 120)
+    has = np.isfinite(O).all(1) & (O > 0).all(1) & np.isin(month, om3)
+    om = M.fit_q_model(lambda ix: M.odds_features(races, z, ix), np.where(has)[0], O, 120)[0]
+    T.log(f"q̂ (3連単) train months={om3[0]}..{om3[-1]} ({len(om3)})")
+    LQt = M.predict_q(om, lambda ix: M.odds_features(tr_races, zt_d, ix), np.arange(len(tr_races)), 120)
     q2t = M.norm_q(LQt) @ M.AGG
+    om2 = [m for m in M.odds_months(work, "2t") if m < cur]
+    src = a.q2
+    if src == "auto":
+        src = "direct" if len(om2) >= M.MIN_PRIOR_ODDS else "agg"
+    if src == "direct":
+        LQ3, _, _ = M.load_wf(work, "q3", races, 120)
+        O2 = z["O2"].astype(float)
+        has2 = np.isfinite(O2).all(1) & (O2 > 0).all(1) & np.isin(month, om2) & np.isfinite(LQ3).all(1)
+        m2 = M.fit_q_model(lambda ix: M.odds2_features(races, z, ix, LQ3), np.where(has2)[0], O2, 30)[0]
+        q2t = M.norm_q(M.predict_q(m2, lambda ix: M.odds2_features(tr_races, zt_d, ix, LQt), np.arange(len(tr_races)), 30))
+        T.log(f"q̂2 (2連単オッズで直接) train months={om2[0]}..{om2[-1]} ({len(om2)})")
 
-    # ---- g2+（当日より前の当たった2連単すべて） ----
-    qh = M.norm_q(np.load(M.mb(work) / "qhat.npz")["LQ"].astype(float))
-    q2h = qh @ M.AGG
-    P2 = z["P"].astype(float) @ M.AGG
-    flags = races[T.RACE_FLAGS].to_numpy(np.float32)
-
-    def X2(rc, P2_, P1_, nwr_, grd_, fl_, Q2):
-        X = N.g2_features(P2_, P1_, nwr_, grd_, fl_)
-        X["jcd"] = np.repeat(rc.jcd.astype(int).to_numpy(), 30)
-        X["rno"] = np.repeat(rc.rno.to_numpy(), 30)
-        X["lq2h"] = np.log(Q2).ravel()
-        X["lq2h_rank"] = ((-Q2).argsort(1).argsort(1) + 1).ravel()
-        X["dlog"] = X["logP"] - X["lq2h"]
-        return X.to_numpy(np.float32)
-
+    # ---- g2+（当日より前の当たった2連単すべて。学習行の q̂2 はウォークフォワード版 = 各月その月より前のオッズだけ） ----
+    Q2, _ = M.wf_q2(work, races, src)
     hit2, pay2 = races.hit2.to_numpy(), races.pay2.to_numpy()
-    ix = np.where((races.hd.to_numpy() < D) & (hit2 >= 0))[0]
-    Xh = X2(races.iloc[ix], P2[ix], z["P1"][ix].astype(float), z["nwr"][ix], z["grd"][ix], flags[ix], q2h[ix])
-    Xh = Xh.reshape(len(ix), 30, -1)[np.arange(len(ix)), hit2[ix]]
+    ix = np.where((races.hd.to_numpy() < D) & (hit2 >= 0) & np.isfinite(Q2).all(1))[0]
+    Xh = M.g2p_X(races, z, ix, Q2).reshape(len(ix), 30, -1)[np.arange(len(ix)), hit2[ix]]
     gm = lgb.train(M.GP_PARAMS, lgb.Dataset(Xh, pay2[ix]), T.G_ROUNDS)
-    T.log(f"g2+ train wins={len(ix)}")
+    T.log(f"g2+ train wins={len(ix)} q2={src}")
     P2t = Pt @ M.AGG
-    G2t = gm.predict(X2(tr_races, P2t, P1t, nwr_t, grd_t, tr_races[T.RACE_FLAGS].to_numpy(np.float32), q2t),
-                     num_threads=M.NT).reshape(-1, 30)
+    G2t = gm.predict(M.g2p_X(tr_races, zt_d, np.arange(len(tr_races)), q2t), num_threads=M.NT).reshape(-1, 30)
     EV = P2t * G2t / 100
 
     # ---- 候補: 確率≥5% の中で EV 最大の1点、EV≥1.2 ----
