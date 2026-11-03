@@ -1,0 +1,69 @@
+name: live_alert
+
+# 締切前アラート（scripts/live_alert.py、rules.yaml strategies.live_tansho_poolgap_v1）。
+# 締切の数分前に単勝・3連単オッズを見て、条件に合う艇を LINE に流す。舟券は買わない。
+# ジョブ1本 = rules.yaml の slots 1枠。開始の遅れ（GitHub の schedule は数分〜十数分遅れる）を見込んで早めに起動する。
+# 必要な Secrets（Settings → Secrets and variables → Actions）: LINE_CHANNEL_TOKEN, LINE_USER_ID
+
+on:
+  schedule:
+    - cron: "15 23 * * *"   # 08:15 JST → 枠0（締切 08:00〜13:00）
+    - cron: "20 3 * * *"    # 12:20 JST → 枠1（締切 13:00〜17:30）
+    - cron: "50 7 * * *"    # 16:50 JST → 枠2（締切 17:30〜23:00）
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "run（今の時刻の枠を動かす） / test（次のレースを1つ判定してテスト送信）"
+        default: "test"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-alert-${{ github.event.schedule || github.event.inputs.mode }}
+  cancel-in-progress: false
+
+env:
+  WORK_BRANCH: claude/tender-newton-ymc8j0
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WORK_BRANCH }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -q requests pandas pyarrow pyyaml
+
+      - name: Run
+        env:
+          LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          MODE: ${{ github.event.inputs.mode || 'run' }}
+        run: |
+          if [ "$MODE" = "test" ]; then
+            python scripts/live_alert.py run --test
+          else
+            python scripts/live_alert.py run
+          fi
+
+      - name: Commit log
+        if: always()
+        run: |
+          git config user.name "live-alert-bot"
+          git config user.email "live-alert-bot@users.noreply.github.com"
+          git add data/live/log || true
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "live: 締切前アラートのログ $(TZ=Asia/Tokyo date +%Y%m%d-%H%M)"
+          for i in 1 2 3 4; do
+            git pull --rebase origin "$WORK_BRANCH" && git push origin "HEAD:$WORK_BRANCH" && exit 0
+            sleep $((i * 5))
+          done
+          exit 1
