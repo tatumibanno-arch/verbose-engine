@@ -23,7 +23,7 @@ description: 毎晩の全手順。今日の成績で検証→気づきを記録�
 6. **買い目を作る**：`python scripts/select_races.py --date <明日>`
    - ルールごと（`lane1_a1`、`strategies:` の `tansho_ev_v1` など）に買い目を作り、`notes/picks/<明日>.md` にルール別の見出しで出る。候補0件のルールはその旨が出る。
    - 単勝ルールは翌日分の1着確率・予想配当を `data/models/tansho_ev/history.parquet` に追記する（翌月の学習に使う。消さない）。目安 1分（ほぼ特徴量づくり）。
-7. **通知**：`python scripts/notify.py --mode verify` と `--mode picks`
+7. **通知**：`python scripts/notify.py --mode verify` と `--mode picks`（LINE_USER_ID があれば LINE に送る。失敗しても WARN を出すだけなので、そのまま次へ進む。WARN が出たら notes/daily に1行残す）
 8. **Parquet 書き出し**：`python scripts/db.py export`
 9. **コミット＆プッシュ**：`git add data/parquet data/models notes && git commit -m "nightly: <今日>" && git push`
 

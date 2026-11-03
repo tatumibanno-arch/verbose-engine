@@ -71,3 +71,8 @@ strategies:
       recalib_from: "2024-05"        # 再校正 α に使う最初の月
       recalib_window_months: 12
       recalib_min_races: 3000
+
+# ---------------------------------------------------------------------------
+# 通知（選定ルールではない。LINE/Slack に送る文面の出し方だけ）
+notify:
+  summary_only_rules: [lane1_a1]  # 比較用のルール。LINE では件数だけ書き、買い目の行は出さない
