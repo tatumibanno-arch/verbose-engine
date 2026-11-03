@@ -232,6 +232,10 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                 if not rows:
                     print(f"  {race['close']} {race['jcd']} {race['rno']}R: オッズ取得失敗", flush=True)
                     continue
+                top = max(rows, key=lambda r: r["gap"] or 0)
+                print(f"  {race['close']} {race['jcd']} {race['rno']}R: 最大ずれ {top['lane']}号艇 {top['gap']} "
+                      f"(3連単 {top['p_3t']:.0%} / 単勝 {top['p_tansho']:.0%}, {top['tansho_odds']}倍)"
+                      f"{' → アラート' if any(r['alert'] for r in rows) else ''}", flush=True)
                 if any(r["alert"] for r in rows) and win_from <= race["close"] < win_to:
                     text = message(race, rows, test=False)
                     print(text, flush=True)
