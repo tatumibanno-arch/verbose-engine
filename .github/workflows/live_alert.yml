@@ -13,8 +13,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "run（今の時刻の枠を動かす） / test（次のレースを1つ判定してテスト送信）"
+        description: "run（今の時刻の枠を動かす） / test（次のレースを1つ判定してテスト送信） / send（file の中身を LINE に送る）"
         default: "test"
+      file:
+        description: "mode=send のとき送るファイル（作業ブランチ上のパス）"
+        default: ""
 
 permissions:
   contents: write
@@ -47,8 +50,11 @@ jobs:
           LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           MODE: ${{ github.event.inputs.mode || 'run' }}
+          FILE: ${{ github.event.inputs.file }}
         run: |
-          if [ "$MODE" = "test" ]; then
+          if [ "$MODE" = "send" ]; then
+            python scripts/line_push.py --file "$FILE"
+          elif [ "$MODE" = "test" ]; then
             python scripts/live_alert.py run --test
           else
             python scripts/live_alert.py run

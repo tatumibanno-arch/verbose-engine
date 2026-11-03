@@ -47,3 +47,16 @@ def send_line(text: str) -> bool:
     if r.status_code != 200:
         raise RuntimeError(f"LINE push failed: HTTP {r.status_code} {r.text[:200]}")
     return True
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+    ap = argparse.ArgumentParser(description="テキストファイルの中身を LINE に送る")
+    ap.add_argument("--file", required=True)
+    a = ap.parse_args()
+    text = open(a.file, encoding="utf-8").read().strip()
+    if not send_line(text):
+        print("WARN: LINE_USER_ID が空なので送っていません", file=sys.stderr)
+        sys.exit(1)
+    print(f"LINE に送信しました: {a.file}")
