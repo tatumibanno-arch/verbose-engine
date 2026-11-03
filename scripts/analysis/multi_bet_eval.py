@@ -401,7 +401,7 @@ CHECK = ["2T:EV上位k:g2+:p>=0.05:k=1:EV>=1.2", "2T:EV上位k:g2+:p>=0.05:k=1:E
 
 
 def g2plus_strict(work, c):
-    """2026-05〜10 の各月 m: テスト行の q̂ を「m より前のオッズだけ」で学習した厳密版に差し替えて g2+ を作り直す。"""
+    """2026-01〜10 の各月 m: テスト行の q̂ を「m より前のオッズだけ」で学習した厳密版に差し替えて g2+ を作り直す。"""
     import lightgbm as lgb
     import nirensho as N
     races, z = c["races"], c["z"]
@@ -442,7 +442,7 @@ def cmd_check(work: Path):
     rng = np.random.default_rng(0)
     L = ["## 有望な候補の点検", ""]
     races = c["races"]
-    for variant in ["LOMO", "厳密（2026-05〜10 は過去のオッズだけ）"]:
+    for variant in ["LOMO", "厳密（2026-01〜10 は過去のオッズだけ）"]:
         g2p = c["g2p"] if variant == "LOMO" else Gs
         ctx = dict(P=c["P"], P1=c["P1"], P2=c["P2"],
                    EV3={"g": c["P"] * np.nan_to_num(c["g"]) / 100, "g+": c["P"] * np.nan_to_num(c["gp"]) / 100},
@@ -460,7 +460,7 @@ def cmd_check(work: Path):
             ret = (mk & W).any(1) * pay
             df = pd.DataFrame(dict(hd=races.hd, month=month, cost=cost, ret=ret, hit=(mk & W).any(1)))
             r = dict(cand=name)
-            for per, ms in [("発見", DISC), ("検証", VALID), ("厳密区間 2026-05〜10", M.ODDS_MONTHS[2:-1]), ("24か月", DISC + VALID)]:
+            for per, ms in [("発見", DISC), ("検証", VALID), ("厳密区間 2026-01〜10", M.ODDS_MONTHS[2:-1]), ("24か月", DISC + VALID)]:
                 x = df[df.month.isin(ms)]
                 dd = x.groupby("hd")[["cost", "ret"]].sum()
                 cc, rr = dd.cost.to_numpy(), dd.ret.to_numpy()

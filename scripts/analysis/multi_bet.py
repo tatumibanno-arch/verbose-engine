@@ -10,11 +10,11 @@
 
 リークの扱い:
   * 選定の入力は前夜の情報だけ（着順モデル P は OOS、g / g+ は予測月より前の当たりだけで学習）。
-  * 予想オッズ q̂ のモデルは「締切オッズ」を目的変数にする。締切オッズは 2026-03〜11-01 にしか無いので、
-      - オッズの無い月（〜2026-02）: オッズのある全月で学習したモデル
+  * 予想オッズ q̂ のモデルは「締切オッズ」を目的変数にする。締切オッズは 2025-11〜2026-11-01 にしか無いので、
+      - オッズの無い月（〜2025-10）: オッズのある全月で学習したモデル
       - オッズのある月 m: m を除いた月で学習したモデル（leave-one-month-out）
     とした。目的変数は市場のオッズで、レースの結果ではない。m の結果が他の月のオッズに入る経路は無い。
-    （念のため、検証の終盤 2026-06〜10 は「m より前のオッズだけ」で学習した厳密版でも数字を出す）
+    （念のため、2026-01〜10 は「m より前のオッズだけ」で学習した厳密版でも数字を出す）
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ for _n, (_a, _b, _c) in enumerate(PERMS.tolist()):
     AGG[_n, _PI[(_a, _b)]] = 1.0
 DISC = [f"{y}-{m:02d}" for y, m in [(2024, 11), (2024, 12)] + [(2025, i) for i in range(1, 11)]]
 VALID = [f"{y}-{m:02d}" for y, m in [(2025, 11), (2025, 12)] + [(2026, i) for i in range(1, 11)]]
-ODDS_MONTHS = [f"2026-{i:02d}" for i in range(3, 12)]
+ODDS_MONTHS = ["2025-11", "2025-12"] + [f"2026-{i:02d}" for i in range(1, 12)]   # 3連単の締切オッズがある月（2025-11〜2026-11-01）
 EXTRA = ["local_win_rate", "national_2ren_rate", "motor_2ren_rate", "boat_2ren_rate", "age", "ser_n", "ser_avg_pos",
          "ser_win", "ser_F", "rs_avg_st", "r90_win", "rc_win_shrunk", "rs_ability"]
 NT = 4
@@ -172,9 +172,9 @@ def cmd_oddsmodel(work: Path):
             tt = te[s:s + 20000]
             LQ[tt] = mdl.predict(odds_features(races, z, tt).to_numpy(np.float32), num_threads=NT).reshape(len(tt), 120)
         log(f"odds model hold-out {m}: {time.time()-t0:.0f}s")
-    # 厳密版（m より前のオッズだけ）: 2026-05 以降
+    # 厳密版（m より前のオッズだけ）: オッズのある最初の2か月より後
     for m in omonths:
-        if m < "2026-05":
+        if m < ODDS_MONTHS[2]:
             continue
         t0 = time.time()
         tr = mrow < m
@@ -207,7 +207,7 @@ def report_odds(work: Path):
     lines.append(f"締切オッズのあるレース {has.sum()}（{sorted(set(month[has]))[0]}〜{sorted(set(month[has]))[-1]}）。"
                  f"払戻率（1/Σ(1/オッズ)）の平均 {rate_mean:.3f}")
     rows = []
-    for nm, ms in [("2026-03〜11（LOMO）", ODDS_MONTHS), ("2026-05〜11（厳密/LOMO 比較用）", ODDS_MONTHS[2:])]:
+    for nm, ms in [(f"{ODDS_MONTHS[0]}〜（LOMO）", ODDS_MONTHS), (f"{ODDS_MONTHS[2]}〜（厳密/LOMO 比較用）", ODDS_MONTHS[2:])]:
         r = has & np.isin(month, ms) & np.isfinite(G).all(1)
         lo = np.log(O[r])
         for est_nm, est in [("g/100（当たり配当で学習）", G[r] / 100), ("g/100 × 定数補正", None),
