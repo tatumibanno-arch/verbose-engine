@@ -189,7 +189,11 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
         text = message(race, rows, test=True) if rows else f"🧪【テスト】{race['close']} {race['jcd']} {race['rno']}R オッズが取れませんでした"
         print(text)
         if not dry:
-            send_line(text)
+            if send_line(text):
+                print("LINE に送信しました")
+            else:
+                print("WARN: LINE_USER_ID が空なので送っていません（GitHub の Secrets を確認）")
+                return 1
         return 0
 
     if slot is None:
