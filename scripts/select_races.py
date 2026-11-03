@@ -135,7 +135,7 @@ def build_strategy_picks(con, hd: str, name: str, cfg: dict, rules: dict, record
 def enabled_strategies(rules: dict, only: list[str] | None = None) -> dict:
     out = {}
     for name, cfg in (rules.get("strategies") or {}).items():
-        if cfg.get("kind") == "live":  # 当日の締切前に scripts/live_alert.py が扱う
+        if cfg.get("kind") in ("live", "manual"):  # live: 当日の live_alert.py / manual: 別スクリプトで作る
             continue
         if cfg.get("enabled", True) and (not only or name in only):
             out[name] = cfg
