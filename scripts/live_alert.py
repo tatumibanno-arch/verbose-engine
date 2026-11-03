@@ -91,11 +91,20 @@ def load_races(hd: str) -> list[dict]:
 
 
 # ------------------------------------------------------------------ 判定
-def market_probs(hd: str, jcd: str, rno: int, session: requests.Session):
-    """(単勝オッズ[6], 単勝由来の1着確率[6], 3連単由来の1着確率[6])。取れなければ None。"""
-    from scrape_web import fetch, parse_odds3t, parse_oddstf
+ODDS_FIELDS = ["hd", "jcd", "rno", "checked_at", "ticket_type", "combination", "odds"]
+
+
+def market_probs(hd: str, jcd: str, rno: int, session: requests.Session, snap: list | None = None):
+    """(単勝オッズ[6], 単勝由来の1着確率[6], 3連単由来の1着確率[6])。取れなければ None。
+    snap にリストを渡すと、取った単勝・2連単・3連単のオッズをすべて追加する（2連単・3連単の研究用）。"""
+    from scrape_web import fetch, parse_odds2tf, parse_odds3t, parse_oddstf
     tf = parse_oddstf(fetch("oddstf", hd, jcd, rno, session) or "")
     t3 = parse_odds3t(fetch("odds3t", hd, jcd, rno, session) or "")
+    t2 = parse_odds2tf(fetch("odds2tf", hd, jcd, rno, session) or "")
+    if snap is not None:
+        at = now_jst().strftime("%H:%M:%S")
+        snap += [{"hd": hd, "jcd": jcd, "rno": rno, "checked_at": at, "ticket_type": tt, "combination": comb,
+                  "odds": o} for tt, comb, o, _ in tf + t2 + t3 if tt in ("tansho", "nirensho", "sanrensho")]
     if not tf or not t3:
         return None
     odds = [None] * 6
@@ -114,8 +123,8 @@ def market_probs(hd: str, jcd: str, rno: int, session: requests.Session):
     return odds, p_tan, p3
 
 
-def judge(race: dict, hd: str, c: dict, session: requests.Session, checked_at: datetime):
-    res = market_probs(hd, race["jcd"], race["rno"], session)
+def judge(race: dict, hd: str, c: dict, session: requests.Session, checked_at: datetime, snap: list | None = None):
+    res = market_probs(hd, race["jcd"], race["rno"], session, snap)
     rows = []
     if res is None:
         return rows
@@ -148,11 +157,11 @@ def message(race: dict, rows: list[dict], test: bool) -> str:
     return "\n".join(lines)
 
 
-def append_log(path: Path, rows: list[dict]) -> None:
+def append_log(path: Path, rows: list[dict], fields: list[str] = LOG_FIELDS) -> None:
     new = not path.exists()
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=LOG_FIELDS)
+        w = csv.DictWriter(f, fieldnames=fields)
         if new:
             w.writeheader()
         w.writerows(rows)
@@ -230,8 +239,11 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                     break
                 time.sleep(POLL_SECONDS)
                 continue
-            results = list(ex.map(lambda r: (r, judge(r, hd, c, session, now_jst())), due))
+            snaps = {}
+            results = list(ex.map(lambda r: (r, judge(r, hd, c, session, now_jst(), snaps.setdefault((r["jcd"], r["rno"]), []))), due))
             for race, rows in results:
+                if not dry and snaps.get((race["jcd"], race["rno"])):
+                    append_log(LOG_DIR / f"{hd}_s{slot}_odds.csv", snaps[(race["jcd"], race["rno"])], ODDS_FIELDS)
                 done.add((race["jcd"], race["rno"]))
                 if not rows:
                     print(f"  {race['close']} {race['jcd']} {race['rno']}R: オッズ取得失敗", flush=True)
@@ -240,7 +252,7 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                 print(f"  {race['close']} {race['jcd']} {race['rno']}R: 最大ずれ {top['lane']}号艇 {top['gap']} "
                       f"(3連単 {top['p_3t']:.0%} / 単勝 {top['p_tansho']:.0%}, {top['tansho_odds']}倍)"
                       f"{' → アラート' if any(r['alert'] for r in rows) else ''}", flush=True)
-                if any(r["alert"] for r in rows) and win_from <= race["close"] < win_to:
+                if c.get("send_line", True) and any(r["alert"] for r in rows) and win_from <= race["close"] < win_to:
                     text = message(race, rows, test=False)
                     print(text, flush=True)
                     if not dry:
@@ -262,7 +274,7 @@ def cmd_report(hd: str) -> int:
     import pandas as pd
 
     from db import connect
-    logs = sorted(LOG_DIR.glob(f"{hd}_s*.csv"))
+    logs = sorted(p for p in LOG_DIR.glob(f"{hd}_s*.csv") if not p.name.endswith("_odds.csv"))
     if not logs:
         print(f"{hd}: ログなし")
         return 0

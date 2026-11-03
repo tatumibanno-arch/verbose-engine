@@ -1,8 +1,8 @@
 # レース選定ルール（現行版）
 # これが唯一の正。変更したら version を上げ、notes/decisions.md に日付と理由を1行残す。
-version: 3
+version: 4
 updated: 2026-11-03
-note: v3 で strategies.live_tansho_poolgap_v1（締切前アラート、紙上）を追加。v2 で strategies.tansho_ev_v1（単勝・1着確率モデル×予想配当、紙上運用）を追加。v1 の 1号艇A1 ルール（lane1_a1）はそのまま。
+note: v4 で締切前アラート（単勝）の LINE 通知を止め、記録だけにした。v3 で strategies.live_tansho_poolgap_v1（締切前アラート、紙上）を追加。v2 で strategies.tansho_ev_v1（単勝・1着確率モデル×予想配当、紙上運用）を追加。v1 の 1号艇A1 ルール（lane1_a1）はそのまま。
 
 # 下の budget / bet / filters / lane1 で作るルール（v1 からある「1号艇A1」）の名前。picks.reason の先頭に付く
 name: lane1_a1
@@ -82,6 +82,7 @@ strategies:
       締切確定オッズでの検証（2025-11〜2026-10）は 1日約11点・回収率 2.1・勝ち月 12/12 だが、
       確定オッズを使った後付けの発見で、締切前のオッズでは未確認。最初の1か月は紙上で記録する。
     paper: 1
+    send_line: false              # 2026-11-03 運用者の判断で LINE 通知は止めた（単勝は売上が小さく、金額を増やすとオッズが下がる）。オッズの記録だけ続ける
     ticket_type: tansho
     unit_yen: 100
     min_gap: 2.0                  # 3連単由来の1着確率 / 単勝由来の1着確率 の下限
