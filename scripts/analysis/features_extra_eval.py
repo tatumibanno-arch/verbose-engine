@@ -35,7 +35,8 @@ GROUPS = {"S": "sr_", "M": "mm_", "C": "ce_", "V": "vc_", "O": "ot_"}
 CONFIGS = {
     "base": [], "base_seed2": [],
     "S": ["S"], "M": ["M"], "C": ["C"], "V": ["V"], "O": ["O"],
-    "ALL": ["S", "M", "C", "V", "O"],
+    "ALL": ["S", "M", "C", "V", "O"], "ALL_seed2": ["S", "M", "C", "V", "O"],
+    "SC": ["S", "C"], "SC_seed2": ["S", "C"],
 }
 PARAMS = dict(TF.LGB_PARAMS, num_threads=3)
 
@@ -113,7 +114,7 @@ def cmd_run(configs, months):
                 continue
             feats = base + [c for g in CONFIGS[cfg] for c in grp[g]]
             t0 = time.time()
-            seed = 11 if cfg == "base_seed2" else TF.LGB_PARAMS["seed"]
+            seed = 11 if cfg.endswith("_seed2") else TF.LGB_PARAMS["seed"]
             P, pos, ok, tau, it, gain = fit_predict(df, feats, month, seed)
             y = np.argmax(pos == 1, 1)
             ll = -np.log(np.clip(P[np.arange(len(P)), y], 1e-12, None))
