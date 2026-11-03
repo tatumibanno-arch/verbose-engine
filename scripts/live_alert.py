@@ -167,6 +167,40 @@ def append_log(path: Path, rows: list[dict], fields: list[str] = LOG_FIELDS) -> 
         w.writerows(rows)
 
 
+# ------------------------------------------------------------------ 2連単（3連単とのずれ）
+RULE_2T = "live_2t_poolgap_try"
+PICK2_FIELDS = ["hd", "jcd", "rno", "close", "checked_at", "combination", "odds", "q2", "p3", "ratio", "ev", "sent"]
+
+
+def picks_2t(snap: list[dict], c2: dict) -> list[dict]:
+    """3連単の市場より2連単の方が安い（人気が低い）2連単。ev ≈ 3連単由来の確率 × 2連単オッズ。"""
+    o2 = {x["combination"]: x["odds"] for x in snap if x["ticket_type"] == "nirensho" and x["odds"]}
+    o3 = {x["combination"]: x["odds"] for x in snap if x["ticket_type"] == "sanrensho" and x["odds"]}
+    i2 = {k: 1 / v for k, v in o2.items() if v > 0}
+    i3 = {k: 1 / v for k, v in o3.items() if v > 0}
+    s2, s3 = sum(i2.values()), sum(i3.values())
+    if not s2 or not s3:
+        return []
+    out = []
+    for pair, v in i2.items():
+        q2 = v / s2
+        p3 = sum(w for k, w in i3.items() if k.startswith(pair + "-")) / s3
+        if p3 >= c2["min_p3"] and p3 / q2 >= c2["min_ratio"]:
+            out.append({"combination": pair, "odds": o2[pair], "q2": round(q2, 4), "p3": round(p3, 4),
+                        "ratio": round(p3 / q2, 3), "ev": round(p3 * o2[pair], 3)})
+    return sorted(out, key=lambda x: -x["ev"])[: c2["max_per_race"]]
+
+
+def message_2t(race: dict, picks: list[dict], at: str) -> str:
+    v = VENUES.get(race["jcd"], race["jcd"])
+    lines = [f"🎯【試し・2連単】{race['close']}締切 {v}{race['rno']}R"]
+    for p in picks:
+        lines.append(f"2連単 {p['combination']}  {p['odds']}倍（{at}時点）")
+        lines.append(f"3連単から見た確率 {p['p3']:.0%} / 2連単の人気 {p['q2']:.0%}（推定期待値 {p['ev']:.2f}）")
+    lines.append("※検証前の試し。根拠は未確認")
+    return "\n".join(lines)
+
+
 # ------------------------------------------------------------------ run（当日）
 def pick_slot(c: dict, now: datetime) -> int | None:
     for i, (a, b) in reversed(list(enumerate(c["slots"]))):  # 枠が重なる時間は後の枠を選ぶ
@@ -241,9 +275,27 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                 continue
             snaps = {}
             results = list(ex.map(lambda r: (r, judge(r, hd, c, session, now_jst(), snaps.setdefault((r["jcd"], r["rno"]), []))), due))
+            c2 = load_rules()["strategies"].get(RULE_2T) or {}
             for race, rows in results:
-                if not dry and snaps.get((race["jcd"], race["rno"])):
-                    append_log(LOG_DIR / f"{hd}_s{slot}_odds.csv", snaps[(race["jcd"], race["rno"])], ODDS_FIELDS)
+                snap = snaps.get((race["jcd"], race["rno"])) or []
+                if not dry and snap:
+                    append_log(LOG_DIR / f"{hd}_s{slot}_odds.csv", snap, ODDS_FIELDS)
+                if c2.get("enabled") and snap:
+                    p2 = picks_2t(snap, c2)
+                    if p2:
+                        at = snap[0]["checked_at"][:5]
+                        text = message_2t(race, p2, at)
+                        print(text, flush=True)
+                        sent = 0
+                        if not dry and c2.get("send_line") and win_from <= race["close"] < win_to:
+                            try:
+                                sent = int(bool(send_line(text)))
+                            except Exception as e:
+                                print(f"WARN LINE: {e}", flush=True)
+                        if not dry:
+                            append_log(LOG_DIR / f"{hd}_s{slot}_2t.csv",
+                                       [dict(p, hd=hd, jcd=race["jcd"], rno=race["rno"], close=race["close"],
+                                             checked_at=snap[0]["checked_at"], sent=sent) for p in p2], PICK2_FIELDS)
                 done.add((race["jcd"], race["rno"]))
                 if not rows:
                     print(f"  {race['close']} {race['jcd']} {race['rno']}R: オッズ取得失敗", flush=True)
@@ -274,7 +326,7 @@ def cmd_report(hd: str) -> int:
     import pandas as pd
 
     from db import connect
-    logs = sorted(p for p in LOG_DIR.glob(f"{hd}_s*.csv") if not p.name.endswith("_odds.csv"))
+    logs = sorted(p for p in LOG_DIR.glob(f"{hd}_s*.csv") if not p.name.endswith(("_odds.csv", "_2t.csv")))
     if not logs:
         print(f"{hd}: ログなし")
         return 0
