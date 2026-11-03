@@ -1,8 +1,8 @@
 # レース選定ルール（現行版）
 # これが唯一の正。変更したら version を上げ、notes/decisions.md に日付と理由を1行残す。
-version: 7
-updated: 2026-11-03
-note: v7 で2連単の試しアラートの LINE を止めた（記録は続ける）。v6 で sanrentan_ev1_v1（3連単 期待値最大1点、紙上）を追加。v5 で live_2t_poolgap_try（2連単の締切前アラート、試し）を追加。v4 で締切前アラート（単勝）の LINE 通知を止め、記録だけにした。v3 で strategies.live_tansho_poolgap_v1（締切前アラート、紙上）を追加。v2 で strategies.tansho_ev_v1（単勝・1着確率モデル×予想配当、紙上運用）を追加。v1 の 1号艇A1 ルール（lane1_a1）はそのまま。
+version: 8
+updated: 2026-11-04
+note: v8 で2連単の試しアラートの LINE を再開。v7 で2連単の試しアラートの LINE を止めた（記録は続ける）。v6 で sanrentan_ev1_v1（3連単 期待値最大1点、紙上）を追加。v5 で live_2t_poolgap_try（2連単の締切前アラート、試し）を追加。v4 で締切前アラート（単勝）の LINE 通知を止め、記録だけにした。v3 で strategies.live_tansho_poolgap_v1（締切前アラート、紙上）を追加。v2 で strategies.tansho_ev_v1（単勝・1着確率モデル×予想配当、紙上運用）を追加。v1 の 1号艇A1 ルール（lane1_a1）はそのまま。
 
 # 下の budget / bet / filters / lane1 で作るルール（v1 からある「1号艇A1」）の名前。picks.reason の先頭に付く
 name: lane1_a1
@@ -104,7 +104,7 @@ strategies:
       3連単からの確率 ≥ min_p3 の2連単を LINE に流す（単勝で見つけた「薄い市場が3連単よりずれる」の2連単版）。
       過去の検証はまだ無い（2連単の過去オッズは取り込み中）。根拠の無い試しとして扱う。
     paper: 1
-    send_line: false              # 2026-11-03 夜に停止（直前にずれが消えた。記録だけ続ける）
+    send_line: true               # 2026-11-04 運用者の判断で再開（紙上・試し）
     ticket_type: nirensho
     unit_yen: 100
     min_ratio: 1.4                # 3連単由来 / 2連単由来 の下限。推定期待値 ≈ 0.75 × これ
