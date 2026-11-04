@@ -23,7 +23,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: live-alert-${{ github.event.schedule || github.event.inputs.mode }}
+  group: live-alert-${{ github.event.schedule || github.run_id }}
   cancel-in-progress: false
 
 env:
