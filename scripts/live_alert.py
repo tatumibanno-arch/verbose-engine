@@ -225,6 +225,74 @@ def watch_list_text(hd: str) -> str:
     return "\n".join(out)
 
 
+def load_deep(hd: str, jcd: str) -> dict | None:
+    p = LIVE_DIR / f"{hd}_deep_{jcd}.json"
+    if not p.exists():
+        return None
+    import json
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def deep_report(race: dict, deep: dict, bi: list, t3: list) -> str:
+    """前夜の材料（選手・モーター・コース別・今節・前検メモ・モデル）＋ 直前（展示・風・オッズ）。"""
+    v = VENUES.get(race["jcd"], race["jcd"])
+    d = deep["races"].get(str(int(race["rno"])))
+    lines = [f"🔎【{v}{race['rno']}R {race['close']}締切 {d.get('race_name', '')}】"]
+    bmap = {b["lane"]: b for b in (bi or [])}
+    ex = [b["exhibition_time"] for b in bi or [] if b.get("exhibition_time")]
+    rank = {b["lane"]: 1 + sum(1 for t in ex if b.get("exhibition_time") and t < b["exhibition_time"]) for b in bi or []}
+    # 風
+    w0 = (bi or [{}])[0] if bi else {}
+    ws = w0.get("wind_speed")
+    if ws is not None:
+        bins = deep["wind_bins"]
+        k = next((i for i in range(len(bins) - 1) if bins[i] < ws <= bins[i + 1]), 0)
+        l1 = deep["wind_l1"].get(str(k))
+        calm = deep["wind_l1"].get("0")
+        lines.append(f"風{ws}m 波{w0.get('wave_height')}cm → この場でこの風速の1号艇1着率 {l1:.0%}（無風 {calm:.0%}）" if l1 else f"風{ws}m 波{w0.get('wave_height')}cm")
+    # 進入
+    st = sorted([b for b in bi or [] if b.get("start_course")], key=lambda x: x["start_course"])
+    if st:
+        course = "".join(str(b["lane"]) for b in st)
+        lines.append(f"スタ展 進入{course}" + ("（枠なり）" if course == "123456" else "（★枠なりでない）"))
+    # 展開（前夜モデルの1着確率）
+    p1 = d.get("p1")
+    if p1:
+        lines.append(f"展開（前夜モデル）: 逃げ{p1[0]:.0%} 差し{p1[1]:.0%} まくり系{p1[2] + p1[3]:.0%}（③{p1[2]:.0%}④{p1[3]:.0%}） 外{p1[4] + p1[5]:.0%}")
+    # 各艇
+    for L in d["lanes"]:
+        b = bmap.get(L["lane"], {})
+        parts = [f"{CIRCLED[L['lane'] - 1]}{L['name'].replace(' ', '')}({L['grade']}){L['flag']}"]
+        if L.get("c_win") is not None:
+            parts.append(f"{L['lane']}C勝{L['c_win']:.0f}% ST{str(L['c_st']).lstrip('0')}")
+        parts.append(f"M{L['motor']}" + (f" 当地3内{L['m_local3']:.0%}" if L.get("m_local3") is not None else ""))
+        if b.get("exhibition_time"):
+            parts.append(f"展{b['exhibition_time']}({rank.get(L['lane'])}位)")
+        if b.get("start_st_raw"):
+            parts.append(f"スタ展{b['start_st_raw']}")
+        if b.get("parts_changed"):
+            parts.append("交換:" + "・".join(b["parts_changed"]))
+        if L.get("meet") and L["meet"] != "-":
+            parts.append(f"今節{L['meet']}")
+        if L.get("flag_note"):
+            parts.append(f"[{L['flag_note']}]")
+        lines.append(" ".join(parts))
+    # オッズ × モデル
+    if t3:
+        odds = {c: o for _, c, o, _ in t3 if o and o > 0}
+        inv = {c: 1 / o for c, o in odds.items()}; s3 = sum(inv.values())
+        p1m = sum(w for c, w in inv.items() if c.startswith("1-")) / s3 if s3 else 0
+        lines.append(f"3連単から見た1号艇1着率 {p1m:.0%}" + (f"（モデル {p1[0]:.0%}）" if p1 else ""))
+        if d.get("top"):
+            ev = [f"{c} {odds.get(c, '-')}倍 確率{p:.1%} 期待値{p * odds[c]:.2f}" for c, p in d["top"][:6] if c in odds]
+            lines.append("モデル上位×今のオッズ:")
+            lines += ["  " + x for x in ev]
+        pop = sorted(odds.items(), key=lambda x: x[1])[:5]
+        lines.append("人気上位: " + " / ".join(f"{c} {o}倍" for c, o in pop))
+    lines.append("◎=前検で好気配 △=劣勢気配。期待値はモデル基準の参考（過去の検証では勝てていない）")
+    return "\n".join(lines)
+
+
 def watch_report(race: dict, hd: str, cw: dict, session: requests.Session) -> str | None:
     from scrape_web import fetch, parse_beforeinfo, parse_odds3t
     bi = parse_beforeinfo(fetch("beforeinfo", hd, race["jcd"], race["rno"], session) or "")
@@ -234,6 +302,9 @@ def watch_report(race: dict, hd: str, cw: dict, session: requests.Session) -> st
     has_ex = bool(bi) and any(b.get("exhibition_time") for b in bi)
     if not has_ex and not race.get("_final_try"):
         return None                       # 展示前。少し待ってから取り直す
+    deep = load_deep(hd, race["jcd"])
+    if deep and str(int(race["rno"])) in deep.get("races", {}):
+        return deep_report(race, deep, bi if has_ex else [], t3)
     if has_ex:
         bi = sorted(bi, key=lambda x: x["lane"])
         ex = [b["exhibition_time"] for b in bi if b.get("exhibition_time")]
@@ -334,7 +405,8 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
     if watch_path.exists():
         with open(watch_path, encoding="utf-8") as f:
             watch_done = {(r["jcd"], int(r["rno"])) for r in csv.DictReader(f)}
-    watch = [r for r in mine if str(r.get("watch")) == "1"] if cw.get("enabled") else []
+    deep_v = {str(x).zfill(2) for x in cw.get("deep_venues") or []}
+    watch = [r for r in mine if str(r.get("watch")) == "1" or r["jcd"] in deep_v] if cw.get("enabled") else []
     with ThreadPoolExecutor(4) as ex:
         while now_jst() < end:
             t = now_jst()
