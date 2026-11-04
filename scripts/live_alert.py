@@ -55,7 +55,7 @@ def cmd_prepare(hd: str) -> int:
 
     from db import connect
     con = connect()
-    e = pd.read_sql("select jcd, rno, lane, racer_name, close_time, race_name from entries where hd=?", con, params=(hd,))
+    e = pd.read_sql("select jcd, rno, lane, racer_name, grade, close_time, race_name from entries where hd=?", con, params=(hd,))
     if e.empty:
         print(f"{hd}: 番組表がありません", file=sys.stderr)
         return 1
@@ -70,6 +70,11 @@ def cmd_prepare(hd: str) -> int:
         for lane in range(1, 7):
             races[f"p_{lane}"] = [h[f"p1r_{lane}"].get((j, r)) if (j, r) in h.index else None
                                   for j, r in zip(races.jcd, races.rno)]
+    races["n_a1"] = [int(((e.jcd == j) & (e.rno == r) & (e.grade == "A1")).sum()) for j, r in zip(races.jcd, races.rno)]
+    w = load_rules()["strategies"].get(RULE_WATCH) or {}
+    p1 = races["p_1"] if "p_1" in races else pd.Series([None] * len(races))
+    races["watch"] = [int(bool(w.get("enabled")) and a >= w.get("min_a1", 99) and (p or 0) >= w.get("min_p1", 1))
+                      for a, p in zip(races.n_a1, pd.to_numeric(p1, errors="coerce").fillna(0))]
     races = races.sort_values(["close", "jcd", "rno"])
     LIVE_DIR.mkdir(parents=True, exist_ok=True)
     out = LIVE_DIR / f"{hd}.csv"
@@ -201,6 +206,74 @@ def message_2t(race: dict, picks: list[dict], at: str) -> str:
     return "\n".join(lines)
 
 
+# ------------------------------------------------------------------ 候補レースの直前レポート
+RULE_WATCH = "live_watch_report"
+WATCH_LAST_TRY_MINUTES = 7      # 展示がまだ出ていなくても、この分数を切ったら出ている分だけで送る
+CIRCLED = "①②③④⑤⑥"
+
+
+def watch_list_text(hd: str) -> str:
+    """朝の一覧（nightly の LINE に入れる）。"""
+    rows = [r for r in load_races(hd) if str(r.get("watch")) == "1"]
+    day = f"{int(hd[4:6])}/{int(hd[6:])}"
+    if not rows:
+        return f"🔎 {day} 直前レポートの候補レース: なし"
+    out = [f"🔎 {day} 直前レポートの候補（A1多め・1号艇有力）{len(rows)}レース。締切12分前ごろに展示とオッズを送ります"]
+    for r in rows:
+        p = float(r.get("p_1") or 0)
+        out.append(f"{r['close']} {VENUES.get(r['jcd'], r['jcd'])}{r['rno']}R {r.get('race_name', '')} ①{r.get('name_1', '')} 1着予想{p:.0%}")
+    return "\n".join(out)
+
+
+def watch_report(race: dict, hd: str, cw: dict, session: requests.Session) -> str | None:
+    from scrape_web import fetch, parse_beforeinfo, parse_odds3t
+    bi = parse_beforeinfo(fetch("beforeinfo", hd, race["jcd"], race["rno"], session) or "")
+    t3 = parse_odds3t(fetch("odds3t", hd, race["jcd"], race["rno"], session) or "")
+    v = VENUES.get(race["jcd"], race["jcd"])
+    lines = [f"🔎【直前レポート】{race['close']}締切 {v}{race['rno']}R {race.get('race_name', '')}（A1×{race.get('n_a1', '?')}）"]
+    has_ex = bool(bi) and any(b.get("exhibition_time") for b in bi)
+    if not has_ex and not race.get("_final_try"):
+        return None                       # 展示前。少し待ってから取り直す
+    if has_ex:
+        bi = sorted(bi, key=lambda x: x["lane"])
+        ex = [b["exhibition_time"] for b in bi if b.get("exhibition_time")]
+        rank = {b["lane"]: 1 + sum(1 for t in ex if b.get("exhibition_time") and t < b["exhibition_time"]) for b in bi}
+        lines.append("展示: " + " ".join(f"{CIRCLED[b['lane']-1]}{b.get('exhibition_time') or '-'}({rank[b['lane']]}位)" for b in bi))
+        st = sorted([b for b in bi if b.get("start_course")], key=lambda x: x["start_course"])
+        if st:
+            lines.append("スタ展: 進入 " + "".join(str(b["lane"]) for b in st) + " / ST " +
+                         " ".join(f"{CIRCLED[b['lane']-1]}{b.get('start_st_raw') or '-'}" for b in st))
+        parts = [f"{CIRCLED[b['lane']-1]}{'・'.join(b['parts_changed'])}" for b in bi if b.get("parts_changed")]
+        if parts:
+            lines.append("部品交換: " + " ".join(parts))
+        lines.append("チルト: " + " ".join(f"{CIRCLED[b['lane']-1]}{b.get('tilt')}" for b in bi))
+        w = bi[0]
+        if w.get("wind_speed") is not None:
+            lines.append(f"水面: 風{w.get('wind_speed')}m 波{w.get('wave_height')}cm")
+    else:
+        lines.append("（直前情報はまだ出ていません）")
+    p1 = race.get("p_1")
+    if p1:
+        lines.append(f"モデルの1号艇1着率 {float(p1):.0%}")
+    if t3:
+        one = sorted([(o, c) for tt, c, o, _ in t3 if c.startswith("1-") and o and o > 0])[: cw["top_combos"]]
+        inv = [1 / o for o, _ in t3_all] if (t3_all := [(o, c) for tt, c, o, _ in t3 if o and o > 0]) else []
+        s3 = sum(inv)
+        p1m = sum(1 / o for o, c in t3_all if c.startswith("1-")) / s3 if s3 else 0
+        lines.append(f"3連単から見た1号艇1着率 {p1m:.0%}")
+        lines.append("1着①の人気上位: " + " / ".join(f"{c} {o}倍" for o, c in one))
+        syn = []
+        acc = 0.0
+        for k, (o, c) in enumerate(one, 1):
+            acc += 1 / o
+            if k in (1, 2, 3, 4, 6):
+                syn.append(f"{k}点 {1 / acc:.1f}倍")
+        lines.append("上位から買った時の合成オッズ: " + " / ".join(syn))
+    else:
+        lines.append("（オッズが取れませんでした）")
+    return "\n".join(lines)
+
+
 # ------------------------------------------------------------------ run（当日）
 def pick_slot(c: dict, now: datetime) -> int | None:
     for i, (a, b) in reversed(list(enumerate(c["slots"]))):  # 枠が重なる時間は後の枠を選ぶ
@@ -255,9 +328,45 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
     end = hm_to_dt(now, s_to) + timedelta(minutes=2)
     print(f"{hd} slot {slot} {s_from}-{s_to}: races {len(mine)} (done {len(done)})", flush=True)
     n_alert = 0
+    cw = load_rules()["strategies"].get(RULE_WATCH) or {}
+    watch_path = LOG_DIR / f"{hd}_s{slot}_watch.csv"
+    watch_done: set = set()
+    if watch_path.exists():
+        with open(watch_path, encoding="utf-8") as f:
+            watch_done = {(r["jcd"], int(r["rno"])) for r in csv.DictReader(f)}
+    watch = [r for r in mine if str(r.get("watch")) == "1"] if cw.get("enabled") else []
     with ThreadPoolExecutor(4) as ex:
         while now_jst() < end:
             t = now_jst()
+            for r in watch:
+                key = (r["jcd"], r["rno"])
+                if key in watch_done:
+                    continue
+                left = (hm_to_dt(t, r["close"]) - t).total_seconds() / 60
+                if left < c["min_lead_minutes"]:
+                    watch_done.add(key)
+                elif left <= cw["report_minutes"]:
+                    r["_final_try"] = left <= WATCH_LAST_TRY_MINUTES
+                    try:
+                        text = watch_report(r, hd, cw, session)
+                    except Exception as e:  # noqa: BLE001
+                        print(f"WARN watch {key}: {e}", flush=True)
+                        continue
+                    if text is None:          # 展示がまだ。次の見回りで取り直す
+                        continue
+                    watch_done.add(key)
+                    print(text, flush=True)
+                    sent = 0
+                    if not dry and cw.get("send_line"):
+                        try:
+                            sent = int(bool(send_line(text)))
+                        except Exception as e:  # noqa: BLE001
+                            print(f"WARN LINE: {e}", flush=True)
+                    if not dry:
+                        append_log(watch_path, [{"jcd": r["jcd"], "rno": r["rno"], "close": r["close"],
+                                                 "sent_at": now_jst().strftime("%H:%M:%S"), "sent": sent,
+                                                 "text": text.replace("\n", " | ")}],
+                                   ["jcd", "rno", "close", "sent_at", "sent", "text"])
             due = []
             for r in mine:
                 key = (r["jcd"], r["rno"])
@@ -269,7 +378,7 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                 elif left <= c["lead_minutes"]:
                     due.append(r)
             if not due:
-                if all((r["jcd"], r["rno"]) in done for r in mine):
+                if all((r["jcd"], r["rno"]) in done for r in mine) and all((r["jcd"], r["rno"]) in watch_done for r in watch):
                     break
                 time.sleep(POLL_SECONDS)
                 continue
@@ -326,7 +435,7 @@ def cmd_report(hd: str) -> int:
     import pandas as pd
 
     from db import connect
-    logs = sorted(p for p in LOG_DIR.glob(f"{hd}_s*.csv") if not p.name.endswith(("_odds.csv", "_2t.csv")))
+    logs = sorted(p for p in LOG_DIR.glob(f"{hd}_s*.csv") if not p.name.endswith(("_odds.csv", "_2t.csv", "_watch.csv")))
     if not logs:
         print(f"{hd}: ログなし")
         return 0
@@ -357,7 +466,7 @@ def cmd_report(hd: str) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["prepare", "run", "report"])
+    ap.add_argument("cmd", choices=["prepare", "run", "report", "watchlist"])
     ap.add_argument("--date")
     ap.add_argument("--slot", type=int)
     ap.add_argument("--test", action="store_true")
@@ -365,6 +474,9 @@ def main() -> int:
     a = ap.parse_args()
     if a.cmd == "prepare":
         return cmd_prepare(a.date or to_hd(tomorrow()))
+    if a.cmd == "watchlist":
+        print(watch_list_text(a.date or to_hd(tomorrow())))
+        return 0
     if a.cmd == "report":
         return cmd_report(a.date or to_hd(today()))
     return cmd_run(a.slot, a.test, a.dry_run)
