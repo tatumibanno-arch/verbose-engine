@@ -6,10 +6,8 @@ name: live_alert
 # 必要な Secrets（Settings → Secrets and variables → Actions）: LINE_CHANNEL_TOKEN, LINE_USER_ID
 
 on:
-  schedule:
-    - cron: "15 23 * * *"   # 08:15 JST → 枠0（締切 08:00〜13:00）
-    - cron: "20 3 * * *"    # 12:20 JST → 枠1（締切 13:00〜17:30）
-    - cron: "50 7 * * *"    # 16:50 JST → 枠2（締切 17:30〜23:00）
+  # GitHub の schedule は遅れたり動かなかったりしたので使わない。
+  # Claude の予約（毎日 08:05 / 12:20 / 16:50 JST）が mode=run で起動する（枠は起動時刻で決まる）。
   workflow_dispatch:
     inputs:
       mode:
