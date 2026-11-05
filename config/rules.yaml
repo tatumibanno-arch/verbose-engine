@@ -149,7 +149,7 @@ strategies:
       ana_min_prob: 0.01          # 補正した確率がこれ未満の目は穴に出さない
       ana_min_ratio: 1.2          # 補正した確率 ÷ オッズの見立て の下限
       ana_points: 3
-    deep_venues: ["12"]           # この場は全レースを深い分析で送る（材料は前夜に scripts/analysis/deep_prep.py が作る）
+    deep_venues: ["12", "14"]     # この場は全レースを深い分析で送る（住之江・鳴門）（材料は前夜に scripts/analysis/deep_prep.py が作る）
 
 # ---------------------------------------------------------------------------
 # 通知（選定ルールではない。LINE/Slack に送る文面の出し方だけ）
