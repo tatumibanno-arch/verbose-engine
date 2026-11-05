@@ -233,6 +233,57 @@ def load_deep(hd: str, jcd: str) -> dict | None:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def pick_lines(d: dict, odds: dict, rank: dict) -> list[str]:
+    """展開予想と、本命・穴の目安（合成オッズつき）。"""
+    pk = (load_rules()["strategies"].get(RULE_WATCH) or {}).get("pick") or {}
+    combos = ["-".join(str(x) for x in p) for p in
+              [(a, b, c) for a in range(1, 7) for b in range(1, 7) for c in range(1, 7) if len({a, b, c}) == 3]]
+    P = dict(zip(combos, d["p120"]))
+    inv = {c: 1 / o for c, o in odds.items() if o}
+    s3 = sum(inv.values())
+    q = {c: inv.get(c, 0) / s3 for c in combos} if s3 else {c: 0 for c in combos}
+    f = {}
+    for L in d["lanes"]:
+        k = 1.0
+        r = rank.get(L["lane"])
+        if r and r <= 2:
+            k *= pk.get("ex_top", 1.1)
+        elif r and r >= 5:
+            k *= pk.get("ex_bottom", 0.9)
+        if L.get("flag") == "◎":
+            k *= pk.get("good", 1.1)
+        elif L.get("flag") == "△":
+            k *= pk.get("bad", 0.85)
+        f[L["lane"]] = k
+    w = pk.get("model_weight", 0.5)
+    adj = {}
+    for c in combos:
+        a, b, cc = map(int, c.split("-"))
+        adj[c] = (w * P[c] + (1 - w) * q[c]) * f[a] * f[b] ** 0.5 * f[cc] ** 0.25
+    t = sum(adj.values())
+    adj = {c: v / t for c, v in adj.items()}
+    win = [sum(v for c, v in adj.items() if c.startswith(f"{i}-")) for i in range(1, 7)]
+    order = sorted(range(6), key=lambda i: -win[i])
+    kind = {0: "逃げ", 1: "差し", 2: "まくり・まくり差し", 3: "まくり・まくり差し", 4: "外からの突き抜け", 5: "外からの突き抜け"}
+    out = [f"■展開予想: {CIRCLED[order[0]]}の{kind[order[0]]}が本線（1着{win[order[0]]:.0%}）、"
+           f"対抗は{CIRCLED[order[1]]}の{kind[order[1]]}（{win[order[1]]:.0%}）、{CIRCLED[order[2]]}（{win[order[2]]:.0%}）"]
+    hon = sorted([c for c in combos if c in odds], key=lambda c: -adj[c])[: pk.get("honmei_points", 3)]
+    if hon:
+        syn = 1 / sum(1 / odds[c] for c in hon)
+        out.append(f"■本命 {len(hon)}点: " + " / ".join(f"{c}（{odds[c]}倍）" for c in hon) +
+                   f" → 合成{syn:.1f}倍・来る確率{sum(adj[c] for c in hon):.0%}")
+    ana = [c for c in combos if c in odds and c not in hon and pk.get("ana_min_odds", 20) <= odds[c] <= pk.get("ana_max_odds", 100)
+           and q[c] > 0 and adj[c] >= pk.get("ana_min_prob", 0.01) and adj[c] / q[c] >= pk.get("ana_min_ratio", 1.2)]
+    ana = sorted(ana, key=lambda c: -adj[c] * odds[c])[: pk.get("ana_points", 3)]
+    if ana:
+        syn = 1 / sum(1 / odds[c] for c in ana)
+        out.append(f"■穴 {len(ana)}点: " + " / ".join(f"{c}（{odds[c]}倍）" for c in ana) +
+                   f" → 合成{syn:.1f}倍・来る確率{sum(adj[c] for c in ana):.0%}（市場の見立て{sum(q[c] for c in ana):.0%}）")
+    else:
+        out.append("■穴: 条件（20〜100倍・市場より1.2倍以上高く見える）に合う目なし")
+    return out
+
+
 def deep_report(race: dict, deep: dict, bi: list, t3: list) -> str:
     """前夜の材料（選手・モーター・コース別・今節・前検メモ・モデル）＋ 直前（展示・風・オッズ）。"""
     v = VENUES.get(race["jcd"], race["jcd"])
@@ -289,7 +340,9 @@ def deep_report(race: dict, deep: dict, bi: list, t3: list) -> str:
             lines += ["  " + x for x in ev]
         pop = sorted(odds.items(), key=lambda x: x[1])[:5]
         lines.append("人気上位: " + " / ".join(f"{c} {o}倍" for c, o in pop))
-    lines.append("◎=前検で好気配 △=劣勢気配。期待値はモデル基準の参考（過去の検証では勝てていない）")
+        if d.get("p120"):
+            lines += pick_lines(d, odds, rank)
+    lines.append("◎=前検で好気配 △=劣勢気配。期待値・本命・穴はモデルと目安の補正による参考（過去の検証では勝てていない）")
     return "\n".join(lines)
 
 

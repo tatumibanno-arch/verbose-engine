@@ -61,6 +61,7 @@ for rno, g in e.groupby("rno"):
             P = z["P"][k[0]].astype(float); P1 = z["P1"][k[0]].astype(float)
             top = np.argsort(-P)[:10]
             item["p1"] = [round(float(v), 3) for v in P1]
+            item["p120"] = [round(float(v), 5) for v in P]
             item["top"] = [["-".join(map(str, T.PERMS[t] + 1)), round(float(P[t]), 4)] for t in top]
     out["races"][str(int(rno))] = item
 p = Path(f"data/live/{D}_deep_{J}.json"); p.write_text(json.dumps(out, ensure_ascii=False, indent=1))
