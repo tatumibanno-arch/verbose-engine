@@ -142,6 +142,7 @@ strategies:
       ex_top: 1.10                # 展示1〜2位の艇（1着・2着・3着のどこにいても掛ける）
       ex_bottom: 0.90             # 展示5〜6位
       good: 1.10                  # 前検◎
+      up: 1.05                    # 気配上向き ↑
       bad: 0.85                   # 前検△
       honmei_points: 3
       ana_min_odds: 20

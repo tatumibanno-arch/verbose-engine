@@ -47,13 +47,14 @@ for rno, g in e.groupby("rno"):
         mno = str(x.motor_no)
         good = [str(v) for v in flags.get("good_motors") or []]; bad = [str(v) for v in flags.get("bad_motors") or []]
         flag = ("◎" if nm in (flags.get("good_racers") or []) or mno in good else
+                "↑" if nm in (flags.get("up_racers") or []) else
                 "△" if nm in (flags.get("bad_racers") or []) or mno in bad else "")
         lanes.append({"lane": x.lane, "name": x.racer_name, "grade": x.grade, "nwr": x.d.get("national_win_rate"),
                       "motor": int(x.motor_no), "m2": x.d.get("motor_2ren_rate"), "m_local3": round(mot.get(x.motor_no, np.nan), 2) if x.motor_no in mot else None,
                       "c_win": st.get(c + "win_rate"), "c_top2": st.get(c + "top2_rate"), "c_st": st.get(c + "avg_st"), "c_strank": st.get(c + "avg_start_rank"),
                       "meet": " ".join(str(int(p)) if str(p).isdigit() else "・" for p in my.position) or "-",
                       "meet_exr": round(float(my.exr.mean()), 1) if my.exr.notna().any() else None,
-                      "flag": flag, "flag_note": {str(k): v for k, v in (flags.get("notes") or {}).items()}.get(mno, "")})
+                      "flag": flag, "flag_note": (flags.get("racer_notes") or {}).get(nm) or {str(k): v for k, v in (flags.get("notes") or {}).items()}.get(mno, "")})
     item = {"close": g.close_time.iloc[0], "race_name": g.race_name.iloc[0], "lanes": lanes}
     if z is not None:
         k = [i for i in range(len(z["jcd"])) if str(z["jcd"][i]).zfill(2) == J and int(z["rno"][i]) == int(rno)]

@@ -103,8 +103,8 @@
      "c_strank": 2.9,
      "meet": "3",
      "meet_exr": 6.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "◎",
+     "flag_note": "スタートの切れ・伸び良し"
     },
     {
      "lane": 6,
@@ -120,8 +120,8 @@
      "c_strank": 3.4,
      "meet": "6 2",
      "meet_exr": 4.0,
-     "flag": "◎",
-     "flag_note": ""
+     "flag": "",
+     "flag_note": "伸び良いが出足いまひとつ"
     }
    ],
    "p1": [
@@ -315,8 +315,8 @@
      "c_strank": 1.8,
      "meet": "5",
      "meet_exr": 2.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "◎",
+     "flag_note": "着順以上に気配良し"
     },
     {
      "lane": 2,
@@ -349,8 +349,8 @@
      "c_strank": 2.9,
      "meet": "3",
      "meet_exr": 1.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "↑",
+     "flag_note": "レース足良く展開を突ける"
     },
     {
      "lane": 4,
@@ -366,8 +366,8 @@
      "c_strank": 2.6,
      "meet": "1",
      "meet_exr": 1.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "◎",
+     "flag_note": "12号機の大幅整備（ピストン・リング・クランク等）で気配良化"
     },
     {
      "lane": 5,
@@ -612,8 +612,8 @@
      "c_strank": 3.0,
      "meet": "1",
      "meet_exr": 6.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "◎",
+     "flag_note": "初日に上向き"
     },
     {
      "lane": 3,
@@ -909,8 +909,8 @@
      "c_strank": 2.3,
      "meet": "3 5",
      "meet_exr": 4.5,
-     "flag": "",
-     "flag_note": ""
+     "flag": "◎",
+     "flag_note": "まあまあ出ている"
     },
     {
      "lane": 4,
@@ -1173,7 +1173,7 @@
      "meet": "5",
      "meet_exr": 6.0,
      "flag": "",
-     "flag_note": ""
+     "flag_note": "スタート早いが伸びない"
     },
     {
      "lane": 3,
@@ -1189,8 +1189,8 @@
      "c_strank": 2.8,
      "meet": "4 6",
      "meet_exr": 4.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "◎",
+     "flag_note": "舟足良好"
     },
     {
      "lane": 4,
@@ -1241,7 +1241,7 @@
      "meet": "2",
      "meet_exr": 5.0,
      "flag": "◎",
-     "flag_note": ""
+     "flag_note": "舟足トップ級、レース足・スタート足とも良い"
     }
    ],
    "p1": [
@@ -1435,8 +1435,8 @@
      "c_strank": 2.0,
      "meet": "3",
      "meet_exr": 5.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "↑",
+     "flag_note": "ターン回り良好"
     },
     {
      "lane": 2,
@@ -1452,8 +1452,8 @@
      "c_strank": 3.6,
      "meet": "3",
      "meet_exr": 1.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "↑",
+     "flag_note": "エンストあったが仕上がり悪くない"
     },
     {
      "lane": 3,
@@ -1469,8 +1469,8 @@
      "c_strank": 3.4,
      "meet": "5",
      "meet_exr": 1.0,
-     "flag": "△",
-     "flag_note": "展示タイムは出るが試運転は劣勢"
+     "flag": "↑",
+     "flag_note": "前検より上向き"
     },
     {
      "lane": 4,
@@ -1716,7 +1716,7 @@
      "meet": "3 5",
      "meet_exr": 5.0,
      "flag": "△",
-     "flag_note": "レース足弱い"
+     "flag_note": "劣勢"
     },
     {
      "lane": 2,
@@ -1732,8 +1732,8 @@
      "c_strank": 3.7,
      "meet": "1 2",
      "meet_exr": 2.5,
-     "flag": "",
-     "flag_note": ""
+     "flag": "↑",
+     "flag_note": "28%以上に動く"
     },
     {
      "lane": 3,
@@ -1783,8 +1783,8 @@
      "c_strank": 3.2,
      "meet": "1",
      "meet_exr": 2.0,
-     "flag": "△",
-     "flag_note": "波がある"
+     "flag": "◎",
+     "flag_note": "ペラ調整で大きく上向き（節トップ級）"
     },
     {
      "lane": 6,
@@ -2046,8 +2046,8 @@
      "c_strank": 2.9,
      "meet": "1",
      "meet_exr": 6.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "◎",
+     "flag_note": "初日に上向き"
     },
     {
      "lane": 5,
@@ -2064,7 +2064,7 @@
      "meet": "2",
      "meet_exr": 5.0,
      "flag": "◎",
-     "flag_note": "中間整備で一新（数字はワースト級でも上向き）"
+     "flag_note": "26%の数字ではない・ガラッと変わった・冷えるほど出る（節トップ級）"
     },
     {
      "lane": 6,
@@ -2275,8 +2275,8 @@
      "c_strank": 2.6,
      "meet": "3",
      "meet_exr": 1.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "↑",
+     "flag_note": "レース足良く展開を突ける"
     },
     {
      "lane": 2,
@@ -2327,7 +2327,7 @@
      "meet": "2",
      "meet_exr": 5.0,
      "flag": "◎",
-     "flag_note": ""
+     "flag_note": "舟足トップ級、レース足・スタート足とも良い"
     },
     {
      "lane": 5,
@@ -2572,8 +2572,8 @@
      "c_strank": 3.4,
      "meet": "3",
      "meet_exr": 6.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "◎",
+     "flag_note": "スタートの切れ・伸び良し"
     },
     {
      "lane": 3,
@@ -2623,8 +2623,8 @@
      "c_strank": 3.8,
      "meet": "3",
      "meet_exr": 1.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "↑",
+     "flag_note": "エンストあったが仕上がり悪くない"
     },
     {
      "lane": 6,
@@ -2835,8 +2835,8 @@
      "c_strank": 2.7,
      "meet": "1",
      "meet_exr": 2.0,
-     "flag": "△",
-     "flag_note": "波がある"
+     "flag": "◎",
+     "flag_note": "ペラ調整で大きく上向き（節トップ級）"
     },
     {
      "lane": 2,
@@ -2869,8 +2869,8 @@
      "c_strank": 2.4,
      "meet": "5",
      "meet_exr": 2.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "◎",
+     "flag_note": "着順以上に気配良し"
     },
     {
      "lane": 4,
@@ -2903,8 +2903,8 @@
      "c_strank": 4.8,
      "meet": "5",
      "meet_exr": 1.0,
-     "flag": "△",
-     "flag_note": "展示タイムは出るが試運転は劣勢"
+     "flag": "↑",
+     "flag_note": "前検より上向き"
     },
     {
      "lane": 6,
@@ -3116,7 +3116,7 @@
      "meet": "5 2",
      "meet_exr": 3.0,
      "flag": "",
-     "flag_note": ""
+     "flag_note": "目立たないが悲観するほどではない"
     },
     {
      "lane": 2,
@@ -3133,7 +3133,7 @@
      "meet": "4 4",
      "meet_exr": 2.0,
      "flag": "◎",
-     "flag_note": "特訓で一変"
+     "flag_note": "節2〜3番手の舟足"
     },
     {
      "lane": 3,
@@ -3166,8 +3166,8 @@
      "c_strank": 2.6,
      "meet": "2 1",
      "meet_exr": 2.0,
-     "flag": "",
-     "flag_note": ""
+     "flag": "◎",
+     "flag_note": "ターンの乗り心地良し"
     },
     {
      "lane": 5,

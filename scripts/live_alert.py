@@ -252,6 +252,8 @@ def pick_lines(d: dict, odds: dict, rank: dict) -> list[str]:
             k *= pk.get("ex_bottom", 0.9)
         if L.get("flag") == "◎":
             k *= pk.get("good", 1.1)
+        elif L.get("flag") == "↑":
+            k *= pk.get("up", 1.05)
         elif L.get("flag") == "△":
             k *= pk.get("bad", 0.85)
         f[L["lane"]] = k
@@ -342,7 +344,7 @@ def deep_report(race: dict, deep: dict, bi: list, t3: list) -> str:
         lines.append("人気上位: " + " / ".join(f"{c} {o}倍" for c, o in pop))
         if d.get("p120"):
             lines += pick_lines(d, odds, rank)
-    lines.append("◎=前検で好気配 △=劣勢気配。期待値・本命・穴はモデルと目安の補正による参考（過去の検証では勝てていない）")
+    lines.append("◎=好気配 ↑=上向き △=劣勢気配。期待値・本命・穴はモデルと目安の補正による参考（過去の検証では勝てていない）")
     return "\n".join(lines)
 
 
