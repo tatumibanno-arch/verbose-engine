@@ -1,8 +1,8 @@
 # レース選定ルール（現行版）
 # これが唯一の正。変更したら version を上げ、notes/decisions.md に日付と理由を1行残す。
-version: 14
+version: 15
 updated: 2026-11-06
-note: v14 で直前レポート（住之江・鳴門の深い分析を含む）の LINE を停止。v13 で深い分析に本命・穴の目安を追加。v12 で住之江（deep_venues）の全レースに深い直前分析を送る。v11 で2連単アラートの LINE を停止。v10 で live_watch_report（候補レースの直前レポート）を追加。v9 で2連単アラートの条件を厳しく（ずれ1.6以上・1レース1点）。v8 で2連単の試しアラートの LINE を再開。v7 で2連単の試しアラートの LINE を止めた（記録は続ける）。v6 で sanrentan_ev1_v1（3連単 期待値最大1点、紙上）を追加。v5 で live_2t_poolgap_try（2連単の締切前アラート、試し）を追加。v4 で締切前アラート（単勝）の LINE 通知を止め、記録だけにした。v3 で strategies.live_tansho_poolgap_v1（締切前アラート、紙上）を追加。v2 で strategies.tansho_ev_v1（単勝・1着確率モデル×予想配当、紙上運用）を追加。v1 の 1号艇A1 ルール（lane1_a1）はそのまま。
+note: v15 で nirentan_ev1cal_v1（2連単 EV最大1点の補正あり期待値、紙上）を追加。v14 で直前レポート（住之江・鳴門の深い分析を含む）の LINE を停止。v13 で深い分析に本命・穴の目安を追加。v12 で住之江（deep_venues）の全レースに深い直前分析を送る。v11 で2連単アラートの LINE を停止。v10 で live_watch_report（候補レースの直前レポート）を追加。v9 で2連単アラートの条件を厳しく（ずれ1.6以上・1レース1点）。v8 で2連単の試しアラートの LINE を再開。v7 で2連単の試しアラートの LINE を止めた（記録は続ける）。v6 で sanrentan_ev1_v1（3連単 期待値最大1点、紙上）を追加。v5 で live_2t_poolgap_try（2連単の締切前アラート、試し）を追加。v4 で締切前アラート（単勝）の LINE 通知を止め、記録だけにした。v3 で strategies.live_tansho_poolgap_v1（締切前アラート、紙上）を追加。v2 で strategies.tansho_ev_v1（単勝・1着確率モデル×予想配当、紙上運用）を追加。v1 の 1号艇A1 ルール（lane1_a1）はそのまま。
 
 # 下の budget / bet / filters / lane1 で作るルール（v1 からある「1号艇A1」）の名前。picks.reason の先頭に付く
 name: lane1_a1
@@ -124,6 +124,26 @@ strategies:
     unit_yen: 100
     min_prob: 0.01
     min_ev: 1.2
+
+  nirentan_ev1cal_v1:
+    enabled: true
+    kind: manual                  # 夜の select_races ではまだ動かない。scripts/analysis/nirensho_today.py が作る（notes/picks/<日付>-nirentan.md）
+    note: >-
+      2026-11-07 から紙上（notes/analysis/nirentan_calibrated.md に事前宣言）。2連単で、モデル確率 ≥ min_prob の目のうち
+      生の期待値（確率×予想配当 g2+/100）最大の1点を選び、その期待値を calibration.md の (b) 直接補正
+      （対象月より前の calib_window_months か月で「選ばれた買い目」の E[払戻/100] = EV·exp(c·X) をポアソン回帰）で
+      補正した期待値 ≥ min_ev_cal のときだけ100円。選ぶ目は補正なしと同じ（閾値だけ補正後の目盛りで付ける）。
+      補正の素性 X は calib_features（下）に固定。H1（1-2）・H2（頭が1号艇以外）を別集計するため second_lane と head_not1 を出す。
+    paper: 1
+    ticket_type: nirensho
+    unit_yen: 100
+    min_prob: 0.05                # 2連単のモデル確率 P2 の下限（選ぶ目の範囲。補正なしと同じ）
+    min_ev_cal: 1.1               # 補正後の期待値の下限（本番扱いの1本。結果を見る前に決めた）
+    report_thresholds: [1.0, 1.1, 1.2]   # バックテスト・集計で並べる補正後の閾値（この3つ以外は試さない）
+    calib_features: [log_ev, log_p, head_not1, second_lane]   # 1, log EV, log P, 頭≠1号艇, 2着艇の番号（2〜6 のダミー。1号艇が基準）
+    calib_window_months: 12       # 対象月より前の最大何か月の「選ばれた買い目」で当てるか
+    calib_min_prior_months: 2     # 前の月がこれ未満なら補正できない（2024-11〜なので 2025-01 から）
+    calib_fit_from: "2024-11"     # 補正の学習に使う最初の月（g2+ がある最初の月）
 
   live_watch_report:
     enabled: true
