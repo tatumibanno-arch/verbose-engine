@@ -1,8 +1,8 @@
 # レース選定ルール（現行版）
 # これが唯一の正。変更したら version を上げ、notes/decisions.md に日付と理由を1行残す。
-version: 15
+version: 16
 updated: 2026-11-06
-note: v15 で nirentan_ev1cal_v1（2連単 EV最大1点の補正あり期待値、紙上）を追加。v14 で直前レポート（住之江・鳴門の深い分析を含む）の LINE を停止。v13 で深い分析に本命・穴の目安を追加。v12 で住之江（deep_venues）の全レースに深い直前分析を送る。v11 で2連単アラートの LINE を停止。v10 で live_watch_report（候補レースの直前レポート）を追加。v9 で2連単アラートの条件を厳しく（ずれ1.6以上・1レース1点）。v8 で2連単の試しアラートの LINE を再開。v7 で2連単の試しアラートの LINE を止めた（記録は続ける）。v6 で sanrentan_ev1_v1（3連単 期待値最大1点、紙上）を追加。v5 で live_2t_poolgap_try（2連単の締切前アラート、試し）を追加。v4 で締切前アラート（単勝）の LINE 通知を止め、記録だけにした。v3 で strategies.live_tansho_poolgap_v1（締切前アラート、紙上）を追加。v2 で strategies.tansho_ev_v1（単勝・1着確率モデル×予想配当、紙上運用）を追加。v1 の 1号艇A1 ルール（lane1_a1）はそのまま。
+note: v16 で live_tansho_poolgap_v1（単勝の締切前アラート）を enabled=false に（運用者の判断。4日連続マイナスで、締切前のずれは締切までに消える。オッズの記録は続ける）。v15 で nirentan_ev1cal_v1（2連単 EV最大1点の補正あり期待値、紙上）を追加。v14 で直前レポート（住之江・鳴門の深い分析を含む）の LINE を停止。v13 で深い分析に本命・穴の目安を追加。v12 で住之江（deep_venues）の全レースに深い直前分析を送る。v11 で2連単アラートの LINE を停止。v10 で live_watch_report（候補レースの直前レポート）を追加。v9 で2連単アラートの条件を厳しく（ずれ1.6以上・1レース1点）。v8 で2連単の試しアラートの LINE を再開。v7 で2連単の試しアラートの LINE を止めた（記録は続ける）。v6 で sanrentan_ev1_v1（3連単 期待値最大1点、紙上）を追加。v5 で live_2t_poolgap_try（2連単の締切前アラート、試し）を追加。v4 で締切前アラート（単勝）の LINE 通知を止め、記録だけにした。v3 で strategies.live_tansho_poolgap_v1（締切前アラート、紙上）を追加。v2 で strategies.tansho_ev_v1（単勝・1着確率モデル×予想配当、紙上運用）を追加。v1 の 1号艇A1 ルール（lane1_a1）はそのまま。
 
 # 下の budget / bet / filters / lane1 で作るルール（v1 からある「1号艇A1」）の名前。picks.reason の先頭に付く
 name: lane1_a1
@@ -73,7 +73,7 @@ strategies:
       recalib_min_races: 3000
 
   live_tansho_poolgap_v1:
-    enabled: true
+    enabled: false              # 2026-11-07 運用者の判断で判定を止めた（記録 0.84→0.64 と4日連続マイナス）。lead_minutes などはオッズ記録のために残す
     kind: live                    # 前夜の選定（select_races）では扱わない。scripts/live_alert.py が当日に動かす
     note: >-
       締切前アラート（2026-11-03 から紙上）。締切 lead_minutes 分前に単勝と3連単のオッズを取り、

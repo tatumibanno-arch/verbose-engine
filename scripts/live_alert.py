@@ -136,7 +136,7 @@ def judge(race: dict, hd: str, c: dict, session: requests.Session, checked_at: d
     odds, p_tan, p3 = res
     for i in range(6):
         gap = p3[i] / p_tan[i] if p_tan[i] > 0 else None
-        alert = bool(odds[i] and odds[i] > 0 and gap is not None and gap >= c["min_gap"] and p3[i] >= c["min_p3"])
+        alert = bool(c.get("enabled", True) and odds[i] and odds[i] > 0 and gap is not None and gap >= c["min_gap"] and p3[i] >= c["min_p3"])
         pm = race.get(f"p_{i + 1}")
         rows.append({
             "hd": hd, "jcd": race["jcd"], "rno": race["rno"], "close": race["close"],
