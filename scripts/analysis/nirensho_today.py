@@ -166,12 +166,10 @@ def write_picks_md(D, df, R):
                          f"{r.p:.1%} | {r.g/100:.0f}倍 | {r.ev:.2f} | {r.ev_cal:.2f} |")
     for t in R["report_thresholds"]:
         s = d[d.ev_cal >= float(t)]
-        lines.append(f"- 補正後 ≥ {t}: {len(s)} 点（★ {int(s.head_not1.sum())}、1-2 {int(((s["head"] == 1) & (s.second == 2)).sum())}）")
+        lines.append(f"- 補正後 ≥ {t}: {len(s)} 点（★ {int(s.head_not1.sum())}、1-2 {int(((s['head'] == 1) & (s.second == 2)).sum())}）")
     lines += ["", "## 実購入メモ（朝に人が書く）", "", "- "]
     out = T.ROOT / "notes" / "picks" / f"{D[:4]}-{D[4:6]}-{D[6:]}-nirentan.md"
-    out.write_text("
-".join(lines) + "
-")
+    out.write_text("\n".join(lines) + "\n")
     T.log(f"wrote {out}")
 
 
