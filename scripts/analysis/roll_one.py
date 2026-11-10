@@ -34,5 +34,6 @@ for name,pp,oo in [("2連単",p2,o2),("3連単",p3,o3)]:
     res=plan(pp,oo)
     if not res: print(f"{name}: 条件を満たす組み合わせなし"); continue
     hit,sel=res
-    print(f"{name}: {len(sel)}点 合計{sum(x[1] for x in sel)}円 モデル的中{hit*100:.0f}% 最低払戻{min(x[1]*x[2] for x in sel):.0f}円")
+    tot=sum(1/v for v in oo.values()); mk=sum((1/oo[x[0]])/tot for x in sel)
+    print(f"{name}: {len(sel)}点 合計{sum(x[1] for x in sel)}円 モデル的中{hit*100:.0f}% オッズから見た的中{mk*100:.0f}% 最低払戻{min(x[1]*x[2] for x in sel):.0f}円")
     for c,a,o,p in sel: print(f"  {c} {a}円 ({o:.1f}倍→{a*o:.0f}円) 確率{p*100:.1f}%")
