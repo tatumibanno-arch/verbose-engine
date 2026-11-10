@@ -47,7 +47,10 @@ def work(i):
             if pl: out.append(dict(venue=VENUES.get(j,j),jcd=j,rno=r,close=close.get((j,r),""),kind=name,bank=B,p_head1=round(head[0],3),top_head=int(np.argmax(head))+1,**pl))
     return out
 with ThreadPoolExecutor(8) as ex: res=[x for l in ex.map(work, range(len(z["jcd"]))) for x in l]
-df=pd.DataFrame(res); df.to_csv(f"/tmp/claude-0/-home-user-verbose-engine/968008a0-6ecf-5641-a3ff-006912b41722/scratchpad/roll_scan_{D}_T{T}.csv",index=False)
+df=pd.DataFrame(res)
+if df.empty:
+    print("オッズがまだ出ていない（前夜は発売前）。朝にもう一度回す"); sys.exit(0)
+df.to_csv(f"/tmp/claude-0/-home-user-verbose-engine/968008a0-6ecf-5641-a3ff-006912b41722/scratchpad/roll_scan_{D}_T{T}.csv",index=False)
 df=df[df.close>="10:00"]
 for kind in ("2連単","3連単"):
     for B in BANKS:
