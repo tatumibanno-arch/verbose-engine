@@ -4,7 +4,8 @@
 import sys, math, itertools, requests, numpy as np
 sys.path.insert(0,"/home/user/verbose-engine/scripts")
 from scrape_web import fetch, parse_odds3t, parse_odds2tf
-D="20261110"; j=sys.argv[1].zfill(2); r=int(sys.argv[2]); B=int(sys.argv[3]); T=float(sys.argv[4]) if len(sys.argv)>4 else 2.0; MAXP=int(sys.argv[5]) if len(sys.argv)>5 else 20
+import os, datetime as _dt; D=os.environ.get("ROLL_DATE") or _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=9))).strftime("%Y%m%d")
+j=sys.argv[1].zfill(2); r=int(sys.argv[2]); B=int(sys.argv[3]); T=float(sys.argv[4]) if len(sys.argv)>4 else 2.0; MAXP=int(sys.argv[5]) if len(sys.argv)>5 else 20
 PERMS=np.array(list(itertools.permutations(range(6),3)))
 z=np.load(f"/tmp/claude-0/-home-user-verbose-engine/968008a0-6ecf-5641-a3ff-006912b41722/scratchpad/trifecta/pred/today_{D}.npz")
 i=[k for k in range(len(z["jcd"])) if str(z["jcd"][k]).zfill(2)==j and int(z["rno"][k])==r][0]; P=z["P"][i]
