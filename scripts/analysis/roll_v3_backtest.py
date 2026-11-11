@@ -33,7 +33,7 @@ PAY={(r.hd,r.jcd,r.rno):(r.combination,r.payout) for r in pay.itertuples()}
 rows=[]; sec2=[]
 for f in sorted(glob.glob(f"{W}/pred_*.npz")):
     z=np.load(f); hd=z["hd"].astype(str)
-    if hd.max()<FROM: continue
+    if max(hd)<FROM: continue
     for i in range(len(hd)):
         k=(hd[i],str(z["jcd"][i]).zfill(2),int(z["rno"][i]))
         if k not in OD or k not in PAY: continue
@@ -45,11 +45,13 @@ for f in sorted(glob.glob(f"{W}/pred_*.npz")):
         sel,hit=plan(probs,OD[k])
         if not sel or hit<0.40: continue
         ret=sel.get(res,0)*pv/100
-        rows.append(dict(hd=k[0],hit=res in sel,mult=ret/B,model=hit))
+        oo=OD[k]; tot=sum(1/v for v in oo.values() if v>0); mk=sum((1/oo[c])/tot for c in sel if oo.get(c))
+        rows.append(dict(hd=k[0],hit=res in sel,mult=ret/B,model=hit,mk=mk,p1=p1))
 d=pd.DataFrame(rows); d["m"]=d.hd.str[:6]
 print(f"SHRINK={SHRINK} 期間 {d.hd.min()}〜{d.hd.max()} 段数 {len(d)}  的中率 {d.hit.mean()*100:.1f}%  モデル的中の平均 {d.model.mean()*100:.1f}%")
 print(f"当たった時の倍率 平均 {d[d.hit].mult.mean():.2f}（最小 {d[d.hit].mult.min():.2f}）  1段の期待値（払戻÷投入）{d.mult.mean():.3f}")
 print(f"2段連続の成功率（独立とみなす）{(d.hit.mean())**2*100:.1f}%")
 print(d.groupby("m").agg(段=("hit","size"),的中=("hit","mean"),回収=("mult","mean")).round(3).to_string())
+d["mkb"]=pd.cut(d.mk,[0,.2,.25,.3,.35,1]); print(d.groupby("mkb",observed=True).agg(段=("hit","size"),的中=("hit","mean"),回収=("mult","mean"),モデル=("model","mean")).round(3).to_string())
 s2=pd.DataFrame(sec2,columns=["pred2","act2"])
 print(f"①1着のとき、モデルの「2着②」の予測割合 {s2.pred2.mean()*100:.1f}% / 実際に2着② {s2.act2.mean()*100:.1f}%（{len(s2)}R）")
