@@ -5,6 +5,7 @@ from scrape_web import fetch, parse_odds3t, parse_odds2tf
 from common import VENUES
 from concurrent.futures import ThreadPoolExecutor
 import os, datetime as _dt; D=os.environ.get("ROLL_DATE") or _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=9))).strftime("%Y%m%d")
+SHRINK=float(os.environ.get("ROLL_SHRINK","1.0"))
 T=float(sys.argv[1]) if len(sys.argv)>1 else 2.0
 BANKS=[1000,2000,4000]
 PERMS=np.array(list(itertools.permutations(range(6),3)))
@@ -19,7 +20,7 @@ def plan(probs, odds, B, maxpts=20):
     U=B//100; NEG=-1
     best=[[NEG]*(U+1) for _ in range(maxpts+1)]; best[0][0]=0; choice={}
     for idx,(c,p,o) in enumerate(items):
-        cost=math.ceil(T*B/o/100-1e-9)
+        cost=math.ceil(T*B/(o*SHRINK)/100-1e-9)  # 締切までの下がり分を見込む
         if cost>U: continue
         for k in range(maxpts-1,-1,-1):
             for u in range(U-cost,-1,-1):
