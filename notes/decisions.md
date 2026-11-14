@@ -71,3 +71,4 @@
 - 合格ライン: 2026-11-14 以降の月だけで、12か月の通算回収1.0超かつ勝ち月8以上（rules.yaml の adopt_*）。満たすまで本番に入れない。
 - 記録先: notes/bets/ana-paper.md（scripts/analysis/ana_paper.py が毎晩作り直す）。
 - 2026-11-14: 毎晩の処理に追加（司令塔のチャットで実行）: 成績・締切時オッズ・直前情報の取り込み後、**毎晩 `python scripts/db.py export` で Parquet を書き出してコミット**し（日曜だけ→毎晩に変更。ほかのチャットが最新データを読めるようにするため）、続けて `pip install pyarrow duckdb` のうえ `python scripts/analysis/ana_paper.py` を呼んで穴狙いの紙上検証（ana-s5-v1・ana-s6-v1、notes/bets/ana-paper.md）を更新する。
+- 2026-11-14: 運用者の指示で、G1・SG の節間の分析を毎晩自動で回す（びわこ大賞 11/14〜19、丸亀 京極賞 11/15〜20）。消費を抑えるため Opus のチャット「G1・SG（遊び）節間の分析」で実行し、毎晩 22:23 JST のスケジュール「G1・SG 節間の分析（毎晩）」をそのチャットに付けた。結果は notes/reads/ に書き、要点を司令塔へ返す。11/20 を過ぎたらスケジュールを消す。運用者が 穴狙いの紙上候補 S5・S6（ana-s5-v1・ana-s6-v1）を了承したかは未確認。
