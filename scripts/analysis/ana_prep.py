@@ -81,7 +81,8 @@ tot = o.groupby(K).agg(S=("q", "sum"), nc=("q", "size")).reset_index()
 tot = tot[tot.nc >= 100]
 H = o.pivot_table(index=K, columns="h", values="q", aggfunc="sum"); H.columns = [f"q_H{i}" for i in H.columns]
 Pq = o.pivot_table(index=K, columns=["h", "s"], values="q", aggfunc="sum"); Pq.columns = [f"q_P{i}{j}" for i, j in Pq.columns]
-mk = tot.merge(H.reset_index(), on=K).merge(Pq.reset_index(), on=K)
+T = o.pivot_table(index=K, columns="cb", values="q", aggfunc="sum"); T.columns = ["t_" + x.replace("-", "") for x in T.columns]  # 1点ごとの 1/オッズ
+mk = tot.merge(H.reset_index(), on=K).merge(Pq.reset_index(), on=K).merge(T.reset_index(), on=K)
 w = py.merge(o[K + ["cb", "q"]], on=K + ["cb"], how="inner").rename(columns={"q": "qw"})
 w["wh"] = w.cb.str[0].astype(int); w["ws"] = w.cb.str[2].astype(int); w["wt"] = w.cb.str[4].astype(int)
 mk = mk.merge(w[K + ["cb", "payout", "qw", "wh", "ws", "wt"]], on=K, how="inner")

@@ -17,3 +17,4 @@
 - notes/patterns.md に記録。採用パターンは無し（9,504区分を見て、偶然を超える再現ゼロ）。
 - データは Parquet から直接読む（SQLite を組み立てなくてよい）: `python scripts/analysis/ana_prep.py OUT.parquet`（約10秒）→ `python scripts/analysis/ana_scan.py OUT.parquet`（約30秒）。pyarrow と duckdb が要る（pip install）。
 - 次の案は notes/patterns.md の末尾。運用者の判断待ち。
+- 2回目（筋書き11本を先に固定）も記録済み。候補は S5・S6 の2つだけで、紙上で前向きに見るかは運用者の判断待ち。`python scripts/analysis/ana_stories.py OUT.parquet`。
