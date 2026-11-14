@@ -1,0 +1,527 @@
+{
+ "url": "https://www.boatrace.jp/owpc/pc/race/rankingmotor?jcd=11&hd=20261114",
+ "rows": [
+  {
+   "racer_no": 4851,
+   "name": "関浩哉",
+   "grade": "A1",
+   "motor_no": 61,
+   "motor_2ren": 47.4,
+   "boat_no": 17,
+   "boat_2ren": 40.5,
+   "pre_time": 6.68
+  },
+  {
+   "racer_no": 4832,
+   "name": "権藤俊光",
+   "grade": "A1",
+   "motor_no": 13,
+   "motor_2ren": 46.4,
+   "boat_no": 20,
+   "boat_2ren": 46.4,
+   "pre_time": 6.73
+  },
+  {
+   "racer_no": 3415,
+   "name": "松井繁",
+   "grade": "A1",
+   "motor_no": 11,
+   "motor_2ren": 46.2,
+   "boat_no": 19,
+   "boat_2ren": 36.0,
+   "pre_time": 6.77
+  },
+  {
+   "racer_no": 3960,
+   "name": "菊地孝平",
+   "grade": "A1",
+   "motor_no": 40,
+   "motor_2ren": 44.3,
+   "boat_no": 30,
+   "boat_2ren": 31.3,
+   "pre_time": 6.64
+  },
+  {
+   "racer_no": 4586,
+   "name": "磯部誠",
+   "grade": "A1",
+   "motor_no": 12,
+   "motor_2ren": 44.0,
+   "boat_no": 47,
+   "boat_2ren": 35.2,
+   "pre_time": 6.77
+  },
+  {
+   "racer_no": 4262,
+   "name": "馬場貴也",
+   "grade": "A1",
+   "motor_no": 18,
+   "motor_2ren": 43.1,
+   "boat_no": 43,
+   "boat_2ren": 44.6,
+   "pre_time": 6.63
+  },
+  {
+   "racer_no": 4961,
+   "name": "西橋奈未",
+   "grade": "A1",
+   "motor_no": 37,
+   "motor_2ren": 41.3,
+   "boat_no": 12,
+   "boat_2ren": 38.2,
+   "pre_time": 6.6
+  },
+  {
+   "racer_no": 4831,
+   "name": "羽野直也",
+   "grade": "A1",
+   "motor_no": 33,
+   "motor_2ren": 40.9,
+   "boat_no": 69,
+   "boat_2ren": 42.7,
+   "pre_time": 6.65
+  },
+  {
+   "racer_no": 4266,
+   "name": "長田頼宗",
+   "grade": "A1",
+   "motor_no": 57,
+   "motor_2ren": 40.6,
+   "boat_no": 22,
+   "boat_2ren": 34.0,
+   "pre_time": 6.72
+  },
+  {
+   "racer_no": 4444,
+   "name": "桐生順平",
+   "grade": "A1",
+   "motor_no": 45,
+   "motor_2ren": 39.8,
+   "boat_no": 60,
+   "boat_2ren": 38.4,
+   "pre_time": 6.69
+  },
+  {
+   "racer_no": 5015,
+   "name": "高橋竜矢",
+   "grade": "A1",
+   "motor_no": 41,
+   "motor_2ren": 39.8,
+   "boat_no": 18,
+   "boat_2ren": 27.0,
+   "pre_time": 6.68
+  },
+  {
+   "racer_no": 5280,
+   "name": "廣瀬凜",
+   "grade": "A1",
+   "motor_no": 19,
+   "motor_2ren": 39.7,
+   "boat_no": 27,
+   "boat_2ren": 28.1,
+   "pre_time": 6.66
+  },
+  {
+   "racer_no": 4715,
+   "name": "村上遼",
+   "grade": "A1",
+   "motor_no": 72,
+   "motor_2ren": 39.4,
+   "boat_no": 70,
+   "boat_2ren": 36.1,
+   "pre_time": 6.6
+  },
+  {
+   "racer_no": 4397,
+   "name": "西村拓也",
+   "grade": "A1",
+   "motor_no": 49,
+   "motor_2ren": 38.0,
+   "boat_no": 40,
+   "boat_2ren": 30.2,
+   "pre_time": 6.63
+  },
+  {
+   "racer_no": 4980,
+   "name": "佐々木完太",
+   "grade": "A1",
+   "motor_no": 39,
+   "motor_2ren": 37.8,
+   "boat_no": 44,
+   "boat_2ren": 35.6,
+   "pre_time": 6.76
+  },
+  {
+   "racer_no": 4350,
+   "name": "篠崎元志",
+   "grade": "A1",
+   "motor_no": 52,
+   "motor_2ren": 37.5,
+   "boat_no": 23,
+   "boat_2ren": 32.0,
+   "pre_time": 6.7
+  },
+  {
+   "racer_no": 4445,
+   "name": "宮地元輝",
+   "grade": "A1",
+   "motor_no": 20,
+   "motor_2ren": 37.5,
+   "boat_no": 65,
+   "boat_2ren": 28.5,
+   "pre_time": 6.63
+  },
+  {
+   "racer_no": 4502,
+   "name": "遠藤エミ",
+   "grade": "A1",
+   "motor_no": 21,
+   "motor_2ren": 37.0,
+   "boat_no": 15,
+   "boat_2ren": 38.7,
+   "pre_time": 6.71
+  },
+  {
+   "racer_no": 4044,
+   "name": "湯川浩司",
+   "grade": "A1",
+   "motor_no": 29,
+   "motor_2ren": 36.6,
+   "boat_no": 52,
+   "boat_2ren": 46.1,
+   "pre_time": 6.65
+  },
+  {
+   "racer_no": 4719,
+   "name": "上條暢嵩",
+   "grade": "A1",
+   "motor_no": 47,
+   "motor_2ren": 35.7,
+   "boat_no": 29,
+   "boat_2ren": 33.1,
+   "pre_time": 6.66
+  },
+  {
+   "racer_no": 4760,
+   "name": "山崎郡",
+   "grade": "A1",
+   "motor_no": 14,
+   "motor_2ren": 35.7,
+   "boat_no": 34,
+   "boat_2ren": 41.3,
+   "pre_time": 6.68
+  },
+  {
+   "racer_no": 4566,
+   "name": "塩田北斗",
+   "grade": "A1",
+   "motor_no": 31,
+   "motor_2ren": 35.2,
+   "boat_no": 25,
+   "boat_2ren": 36.4,
+   "pre_time": 6.75
+  },
+  {
+   "racer_no": 4959,
+   "name": "井上忠政",
+   "grade": "A1",
+   "motor_no": 26,
+   "motor_2ren": 34.7,
+   "boat_no": 46,
+   "boat_2ren": 40.8,
+   "pre_time": 6.68
+  },
+  {
+   "racer_no": 4364,
+   "name": "池永太",
+   "grade": "A1",
+   "motor_no": 67,
+   "motor_2ren": 34.5,
+   "boat_no": 53,
+   "boat_2ren": 34.5,
+   "pre_time": 6.7
+  },
+  {
+   "racer_no": 4482,
+   "name": "守屋美穂",
+   "grade": "A1",
+   "motor_no": 64,
+   "motor_2ren": 34.0,
+   "boat_no": 33,
+   "boat_2ren": 29.6,
+   "pre_time": 6.63
+  },
+  {
+   "racer_no": 4494,
+   "name": "河合佑樹",
+   "grade": "A1",
+   "motor_no": 68,
+   "motor_2ren": 34.0,
+   "boat_no": 41,
+   "boat_2ren": 40.1,
+   "pre_time": 6.68
+  },
+  {
+   "racer_no": 4659,
+   "name": "木下翔太",
+   "grade": "A1",
+   "motor_no": 34,
+   "motor_2ren": 33.7,
+   "boat_no": 31,
+   "boat_2ren": 41.6,
+   "pre_time": 6.75
+  },
+  {
+   "racer_no": 4686,
+   "name": "丸野一樹",
+   "grade": "A1",
+   "motor_no": 66,
+   "motor_2ren": 33.5,
+   "boat_no": 54,
+   "boat_2ren": 32.6,
+   "pre_time": 6.78
+  },
+  {
+   "racer_no": 4544,
+   "name": "松田大志郎",
+   "grade": "A1",
+   "motor_no": 70,
+   "motor_2ren": 33.3,
+   "boat_no": 32,
+   "boat_2ren": 31.3,
+   "pre_time": 6.7
+  },
+  {
+   "racer_no": 4352,
+   "name": "下條雄太郎",
+   "grade": "A1",
+   "motor_no": 50,
+   "motor_2ren": 32.8,
+   "boat_no": 39,
+   "boat_2ren": 35.8,
+   "pre_time": 6.66
+  },
+  {
+   "racer_no": 4237,
+   "name": "大峯豊",
+   "grade": "A1",
+   "motor_no": 46,
+   "motor_2ren": 32.6,
+   "boat_no": 36,
+   "boat_2ren": 30.0,
+   "pre_time": 6.64
+  },
+  {
+   "racer_no": 4856,
+   "name": "豊田健士郎",
+   "grade": "A1",
+   "motor_no": 53,
+   "motor_2ren": 32.6,
+   "boat_no": 37,
+   "boat_2ren": 36.7,
+   "pre_time": 6.71
+  },
+  {
+   "racer_no": 4573,
+   "name": "佐藤翼",
+   "grade": "A1",
+   "motor_no": 32,
+   "motor_2ren": 32.1,
+   "boat_no": 71,
+   "boat_2ren": 34.0,
+   "pre_time": 6.77
+  },
+  {
+   "racer_no": 4075,
+   "name": "中野次郎",
+   "grade": "A1",
+   "motor_no": 63,
+   "motor_2ren": 31.8,
+   "boat_no": 66,
+   "boat_2ren": 29.8,
+   "pre_time": 6.65
+  },
+  {
+   "racer_no": 4361,
+   "name": "柳生泰二",
+   "grade": "A1",
+   "motor_no": 17,
+   "motor_2ren": 31.7,
+   "boat_no": 58,
+   "boat_2ren": 40.5,
+   "pre_time": 6.57
+  },
+  {
+   "racer_no": 4743,
+   "name": "木村仁紀",
+   "grade": "A1",
+   "motor_no": 71,
+   "motor_2ren": 31.7,
+   "boat_no": 50,
+   "boat_2ren": 29.4,
+   "pre_time": 6.67
+  },
+  {
+   "racer_no": 4604,
+   "name": "岩瀬裕亮",
+   "grade": "A1",
+   "motor_no": 22,
+   "motor_2ren": 31.6,
+   "boat_no": 61,
+   "boat_2ren": 31.8,
+   "pre_time": 6.65
+  },
+  {
+   "racer_no": 3721,
+   "name": "守田俊介",
+   "grade": "A1",
+   "motor_no": 23,
+   "motor_2ren": 30.8,
+   "boat_no": 57,
+   "boat_2ren": 27.4,
+   "pre_time": 6.61
+  },
+  {
+   "racer_no": 4297,
+   "name": "山田哲也",
+   "grade": "A1",
+   "motor_no": 58,
+   "motor_2ren": 30.3,
+   "boat_no": 11,
+   "boat_2ren": 36.0,
+   "pre_time": 6.56
+  },
+  {
+   "racer_no": 4524,
+   "name": "深谷知博",
+   "grade": "A1",
+   "motor_no": 59,
+   "motor_2ren": 30.2,
+   "boat_no": 55,
+   "boat_2ren": 30.0,
+   "pre_time": 6.69
+  },
+  {
+   "racer_no": 4427,
+   "name": "秦英悟",
+   "grade": "A1",
+   "motor_no": 48,
+   "motor_2ren": 30.1,
+   "boat_no": 21,
+   "boat_2ren": 29.9,
+   "pre_time": 6.69
+  },
+  {
+   "racer_no": 4762,
+   "name": "藤原啓史朗",
+   "grade": "A1",
+   "motor_no": 36,
+   "motor_2ren": 29.7,
+   "boat_no": 24,
+   "boat_2ren": 38.7,
+   "pre_time": 6.7
+  },
+  {
+   "racer_no": 3941,
+   "name": "池田浩二",
+   "grade": "A1",
+   "motor_no": 16,
+   "motor_2ren": 29.6,
+   "boat_no": 51,
+   "boat_2ren": 30.0,
+   "pre_time": 6.71
+  },
+  {
+   "racer_no": 4188,
+   "name": "久田敏之",
+   "grade": "A1",
+   "motor_no": 65,
+   "motor_2ren": 29.6,
+   "boat_no": 59,
+   "boat_2ren": 31.4,
+   "pre_time": 6.73
+  },
+  {
+   "racer_no": 4024,
+   "name": "井口佳典",
+   "grade": "A1",
+   "motor_no": 56,
+   "motor_2ren": 29.5,
+   "boat_no": 26,
+   "boat_2ren": 31.6,
+   "pre_time": 6.73
+  },
+  {
+   "racer_no": 4688,
+   "name": "永井彪也",
+   "grade": "A1",
+   "motor_no": 55,
+   "motor_2ren": 29.3,
+   "boat_no": 45,
+   "boat_2ren": 30.4,
+   "pre_time": 6.69
+  },
+  {
+   "racer_no": 4734,
+   "name": "安河内将",
+   "grade": "A1",
+   "motor_no": 27,
+   "motor_2ren": 29.0,
+   "boat_no": 68,
+   "boat_2ren": 42.5,
+   "pre_time": 6.7
+  },
+  {
+   "racer_no": 3983,
+   "name": "須藤博倫",
+   "grade": "A1",
+   "motor_no": 15,
+   "motor_2ren": 28.6,
+   "boat_no": 64,
+   "boat_2ren": 27.0,
+   "pre_time": 6.68
+  },
+  {
+   "racer_no": 5029,
+   "name": "中亮太",
+   "grade": "A1",
+   "motor_no": 25,
+   "motor_2ren": 28.2,
+   "boat_no": 72,
+   "boat_2ren": 37.1,
+   "pre_time": 6.59
+  },
+  {
+   "racer_no": 5017,
+   "name": "澤田尚也",
+   "grade": "A1",
+   "motor_no": 38,
+   "motor_2ren": 28.0,
+   "boat_no": 62,
+   "boat_2ren": 35.7,
+   "pre_time": 6.58
+  },
+  {
+   "racer_no": 5256,
+   "name": "中山翔太",
+   "grade": "A1",
+   "motor_no": 30,
+   "motor_2ren": 26.1,
+   "boat_no": 49,
+   "boat_2ren": 37.6,
+   "pre_time": 6.68
+  },
+  {
+   "racer_no": 4205,
+   "name": "山口剛",
+   "grade": "A1",
+   "motor_no": 62,
+   "motor_2ren": 25.9,
+   "boat_no": 38,
+   "boat_2ren": 39.2,
+   "pre_time": 6.74
+  }
+ ],
+ "comment_motor": "ボートレースびわこは、いち早くバイオ燃料が導入された場で今年で2年目となる。現モーターの初下ろしは4月とあり半年以上が経過しているが圧倒的なエース機は不在だ。記念級の選手の手が加わり機力の変動にも注目が集まるシリーズだ。その中で、常に高いレベルで力強い動きをみせている権藤俊光の13号機を筆頭に、松井繁の11号機、近況の動きでは関浩哉の61号機、豊田健士郎の53号機あたりが注目機。調整が合えば長田頼宗の57号機、馬場貴也の18号機も上位級に仕上がるポテンシャルを秘めている。",
+ "comment_time": "トップタイムを計測したのは6.56の山田哲也。前検日のスタート練習ではダッシュ筋からスリット後に伸びていく気配があっただけに30パーセントそこそこのモーターを考えれば機歴以上の活躍に期待は高まる。6.57で続いたのは柳生泰二。こちらは前操者の岡村仁で優出2着と上昇ムードの17号機で仕上がりは早そう。6.58には地元の澤田尚也、20パーセント台のモーターながら中間整備で急上昇し、夏場に開催されたSGオーシャンカップVの38号機が相棒で、実戦は十分だ。"
+}
