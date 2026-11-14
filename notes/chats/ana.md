@@ -28,3 +28,4 @@
 - 3回目（買われすぎを外す10本）は全滅。notes/patterns.md。
 - 4回目（市場の形の12本）も全滅。`python scripts/analysis/ana_market.py OUT.parquet`。次の案は notes/patterns.md 末尾。
 - 決まり手: `python scripts/ingest_kimarite.py --from YYYYMMDD --to YYYYMMDD`（毎晩その日の分を足すなら同じ日付を from/to に）。5回目（癖の筋書き12本）も全滅。`python scripts/analysis/ana_kimarite.py OUT.parquet`。
+- 今日の候補: `python scripts/analysis/ana_today.py`（番組表で前夜条件を絞り、締切前のレースは展示と今のオッズで S5・S6 を判定。boatrace.jp は1回8秒ほどかかる）。
