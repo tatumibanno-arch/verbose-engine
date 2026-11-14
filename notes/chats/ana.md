@@ -27,3 +27,4 @@
 - 当日に間に合うか: モーター・級別は前夜、展示順位は締切4〜15分前。①の市場シェア（S5）と合成15〜60倍（S6）は締切直前のオッズで決まるので、数分前のオッズで同じ判断になるかは未確認。確かめるには live_alert で締切前の3連単オッズを記録して比べる必要がある。
 - 3回目（買われすぎを外す10本）は全滅。notes/patterns.md。
 - 4回目（市場の形の12本）も全滅。`python scripts/analysis/ana_market.py OUT.parquet`。次の案は notes/patterns.md 末尾。
+- 決まり手: `python scripts/ingest_kimarite.py --from YYYYMMDD --to YYYYMMDD`（毎晩その日の分を足すなら同じ日付を from/to に）。5回目（癖の筋書き12本）も全滅。`python scripts/analysis/ana_kimarite.py OUT.parquet`。
