@@ -18,3 +18,7 @@
   4. notes/ だけコミットしてプッシュ。Parquet の書き出しは転がしチャットの夜の処理に任せる（同じファイルを2つのチャットが書くとぶつかるため）。
   - 丸亀の前検は 11/14 の夕方以降に 3 を回せば入る（選手ごとのモーターが決まる）。
 - 環境メモ: 新しいコンテナでは `pip install pyarrow boatrace-lzh` が要る。`data/boatrace.db` の組み立ては約2分（9GB）。Parquet は成績 11/08 までだったので、11/09〜13 の成績と 11/10〜14 の番組表はこのチャットの作業用DBにだけ取り込んだ（Parquet には書いていない）。
+- **まっさらなコンテナで節間の更新を回すときの前準備**（上の手順 2 の前に必ず）:
+  - `pip install pyarrow boatrace-lzh pyyaml`、続けて `python scripts/db.py stats`（DB を Parquet から組み立てる。約2分。出た `results` と `entries` の `to` の日付を見る）。
+  - Parquet に無い日を埋める: `python scripts/ingest.py performance --from <results の to の翌日> --to 当日`、`python scripts/ingest.py schedule --from <entries の to の翌日> --to 翌日`（11/14 朝の時点では成績 11/08・番組表 11/09 までだったので、`--from 20261109` と `--from 20261110`）。これを抜くと、モーターの直近成績と節間の章（番組表と成績の突き合わせ）が欠ける。取り直しは上書きなので重なっても害はない。翌日の番組表は前夜に出る（まだなら 404 で 0 件、それでよい）。
+  - `scrape_web.py` は成績を取り込んだ日のレースしか見に行かないので、成績の取り込みの後に回す。
