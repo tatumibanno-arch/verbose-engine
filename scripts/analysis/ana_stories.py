@@ -1,6 +1,6 @@
 """穴狙い2回目（2026-11-14）: 先に notes/patterns.md に固定した筋書き S1〜S11 を確かめる。
 
-    python scripts/analysis/ana_stories.py IN.parquet [シャッフル回数=200]
+    python scripts/analysis/ana_stories.py IN.parquet [シャッフル回数=200] [組=2|3]   （2=S1〜S11、3=T1〜T10）
 
 買い方は合成買い（締切時オッズで配分＝実際より甘い）。帯は「全部」と「合成15〜60倍のレースだけ」。
 偶然の目安: 条件に使う列をレース間（同じ期間の中）でシャッフルして同じ手順を回す。
@@ -53,6 +53,34 @@ def stories(d):
     return st
 
 
+def stories3(d):
+    """3回目: 買われすぎの形を外す（T1〜T10）。"""
+    g = lambda n, k: np.asarray(d[f"{n}{k}"].values, dtype=float)
+    p1 = d.p_H1.values; fav = p1 >= .5
+    w = d.wind.astype(float).values
+    slow = lambda k, a, b: (g("ms", k) - g("ms", k + 1) >= a) & (g("sx", k) - g("sx", k + 1) >= b)
+    perm2 = lambda xs: [f"1{a}{b}" for a in xs for b in xs if a != b]
+    st = {}
+    c1 = fav & slow(3, .03, .05) & (g("er", 4) <= 2)
+    st["T1 ③凹み④好展示→1-235-235"] = [(c1, tk(*perm2("235")))]
+    st["T2 ③凹み④好展示→1-2-全"] = [(c1, tk("12x"))]
+    st["T3 ②凹み③好展示→1-245-245"] = [(fav & slow(2, .03, .05) & (g("er", 3) <= 2), tk(*perm2("245")))]
+    et = np.column_stack([g("et", k) for k in range(1, 7)]); srt = np.sort(et, axis=1)
+    lone = srt[:, 1] - srt[:, 0] >= .05
+    st["T4 外の展示抜け1位を外す→1-2,1-3"] = [(fav & lone & (et[:, k - 1] == srt[:, 0]),
+                                    [i for i in tk("12x", "13x") if str(k) not in ALL[i]]) for k in (4, 5, 6)]
+    st["T5 ⑥A1→1-234-234"] = [(fav & (g("gr", 6) == 4), tk(*perm2("234")))]
+    st["T6 風5m→1-2,1-3-全"] = [(fav & (w >= 5), tk("12x", "13x"))]
+    st["T7 枠なりでない→頭①"] = [(fav & ~d.waku.astype(bool).values, tk("1xx"))]
+    st["T8 鉄板①→1-23-234の4点"] = [((p1 >= .7) & (g("gr", 1) == 4) & (g("cw", 1) >= 70) & (g("er", 1) <= 3), tk("123", "132", "124", "134"))]
+    ms = np.column_stack([g("ms", k) for k in range(1, 7)])
+    with np.errstate(all="ignore"):
+        fastest = ms[:, 0] <= np.nanmin(ms[:, 1:], axis=1)
+    st["T9 少し疑われた①が展示1位・今節ST最速→頭①"] = [((p1 >= .5) & (p1 <= .65) & (g("er", 1) == 1) & fastest, tk("1xx"))]
+    st["T10 ①③B級④A1カド→1-2,2-1-全"] = [((g("gr", 1) <= 2) & (g("gr", 3) <= 2) & (g("gr", 4) == 4) & (g("sc", 4) == 4), tk("12x", "21x"))]
+    return st
+
+
 def evaluate(st):
     rows = []
     for name, parts in st.items():
@@ -74,7 +102,8 @@ def evaluate(st):
     return rows
 
 
-rows = evaluate(stories(df))
+STF = stories3 if (len(sys.argv) > 3 and sys.argv[3] == "3") else stories
+rows = evaluate(STF(df))
 cols = ["筋書き", "帯", "n発", "的中発", "見立て発", "実際発", "回収発", "n検", "的中検", "見立て検", "実際検", "回収検", "合成中央"]
 t = pd.DataFrame([r[:-2] for r in rows], columns=cols)
 t["月あたり"] = ((t.n発 + t.n検) / 12).round(0)
@@ -89,7 +118,7 @@ for it in range(NPERM):
     for msk in (disc, ~disc):
         idx = np.where(msk)[0]; perm[idx] = rng.permutation(idx)
     d2 = df.copy(); d2[feat] = df[feat].iloc[perm].reset_index(drop=True)
-    t2 = pd.DataFrame([r[:-2] for r in evaluate(stories(d2))], columns=cols)
+    t2 = pd.DataFrame([r[:-2] for r in evaluate(STF(d2))], columns=cols)
     c1.append(ok(t2)); c9.append(int(((t2.回収発 >= .9) & (t2.回収検 >= .9)).sum()))
 print(f"シャッフル{NPERM}回: 両方1.0以上 平均{np.mean(c1):.2f}（最大{max(c1)}）、両方0.9以上 平均{np.mean(c9):.2f}（最大{max(c9)}）")
 print("\n== 月ごとの回収（帯=全部）==")

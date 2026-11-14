@@ -1,6 +1,6 @@
 """穴狙いパターン探しの下ごしらえ（2026-11-14）。Parquet から直接、1レース1行の表を作る（SQLite は使わない）。
 
-    python scripts/analysis/ana_prep.py OUT.parquet
+    python scripts/analysis/ana_prep.py OUT.parquet [FROM TO]   （既定 20251101〜20261031）
 
 列:
   艇ごと（k=1..6）: et{k} 展示タイム, er{k} 展示順位, sc{k} スタ展の進入, sx{k} スタ展ST（Fは負）,
@@ -15,8 +15,8 @@
 import sys, glob, itertools
 import duckdb, numpy as np, pandas as pd
 
-FROM, TO = "20251101", "20261031"
 out = sys.argv[1]
+FROM, TO = (sys.argv[2], sys.argv[3]) if len(sys.argv) > 3 else ("20251101", "20261031")
 c = duckdb.connect()
 P = "data/parquet"
 K = ["hd", "jcd", "rno"]
@@ -34,10 +34,11 @@ en = c.sql(f"""select hd, cast(jcd as int) jcd, rno, lane, cast(racer_no as int)
   from '{P}/entries_*.parquet' where hd between '{FROM}' and '{TO}'""").df()
 en["gr"] = en.grade.map({"A1": 4, "A2": 3, "B1": 2, "B2": 1})
 
+RS_FROM = (pd.to_datetime(FROM, format="%Y%m%d") - pd.Timedelta(days=10)).strftime("%Y%m%d")
 # ---- 今節平均ST: 同じ場・同じ選手の、前日まで6日以内の本番ST ----
 rs = c.sql(f"""select hd, cast(jcd as int) jcd, cast(json_extract(data,'$.racer_number') as int) racer,
   cast(json_extract(data,'$.st_timing') as double) st
-  from '{P}/results_*.parquet' where hd between '20251020' and '{TO}' and json_extract(data,'$.st_timing') is not null""").df()
+  from '{P}/results_*.parquet' where hd between '{RS_FROM}' and '{TO}' and json_extract(data,'$.st_timing') is not null""").df()
 rs["d"] = pd.to_datetime(rs.hd, format="%Y%m%d")
 day = rs.groupby(["jcd", "racer", "d"]).st.agg(["sum", "count"]).reset_index()
 q = en[["hd", "jcd", "racer"]].drop_duplicates(); q["d0"] = pd.to_datetime(q.hd, format="%Y%m%d")
@@ -72,6 +73,8 @@ race = race[race.n == 6].merge(wide.reset_index(), on=K)
 # ---- 市場（3連単）と払戻 ----
 o = c.sql(f"""select hd, cast(jcd as int) jcd, rno, combination cb, odds from '{P}/odds_*.parquet'
   where ticket_type='sanrensho' and odds>0 and hd between '{FROM}' and '{TO}'""").df()
+if len(o) == 0 or len(bi) == 0:
+    print("レース数 0（この期間の締切時オッズか直前情報がまだ無い）"); sys.exit(0)
 o["q"] = 1 / o.odds
 o["h"] = o.cb.str[0].astype(int); o["s"] = o.cb.str[2].astype(int)
 py = c.sql(f"""select hd, cast(jcd as int) jcd, rno, combination cb, payout from '{P}/payouts_*.parquet'
@@ -97,6 +100,8 @@ for s in shapes:
 mk = pd.concat([mk, pd.DataFrame(new)], axis=1)
 df = race.merge(mk, on=K, how="inner")
 df.to_parquet(out)
+if len(df) == 0:
+    print("レース数 0"); sys.exit(0)
 print("レース数", len(df), "期間", df.hd.min(), df.hd.max(), "列", df.shape[1])
 print("今節STあり(1号艇)", df.ms1.notna().mean().round(3), "コース別あり(1号艇)", df.cw1.notna().mean().round(3))
 print("全体: 頭ごとの 市場見立て / 実際 / 合成買い回収")

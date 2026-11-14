@@ -18,3 +18,11 @@
 - データは Parquet から直接読む（SQLite を組み立てなくてよい）: `python scripts/analysis/ana_prep.py OUT.parquet`（約10秒）→ `python scripts/analysis/ana_scan.py OUT.parquet`（約30秒）。pyarrow と duckdb が要る（pip install）。
 - 次の案は notes/patterns.md の末尾。運用者の判断待ち。
 - 2回目（筋書き11本を先に固定）も記録済み。候補は S5・S6 の2つだけで、紙上で前向きに見るかは運用者の判断待ち。`python scripts/analysis/ana_stories.py OUT.parquet`。
+
+## 紙上検証の毎晩の採点（司令塔の毎晩の処理から呼ぶ）
+- `pip install pyarrow duckdb`（無ければ）→ 成績・締切時オッズ・直前情報を取り込んで Parquet に書き出した後に `python scripts/analysis/ana_paper.py`。
+- 2026-11-14 以降の全レースを毎回計算し直して notes/bets/ana-paper.md を作り直す（何度呼んでも同じ。手で書き換えない）。データがまだ無い日は「該当なし」のまま正常終了する。
+- 条件は notes/decisions.md 2026-11-14 の ana-s5-v1・ana-s6-v1。スクリプト内の条件を変えたら別ルールとしてやり直す。
+- 動作確認: `python scripts/analysis/ana_paper.py --from 20260501 --to 20261031 --out /tmp/x.md` で S5 1,137レース・的中27本・回収1.15、S6 638レース・29本・1.10（100円単位の配分なので、合成買いの理論値 1.21・1.10 と少しずれる）。
+- 当日に間に合うか: モーター・級別は前夜、展示順位は締切4〜15分前。①の市場シェア（S5）と合成15〜60倍（S6）は締切直前のオッズで決まるので、数分前のオッズで同じ判断になるかは未確認。確かめるには live_alert で締切前の3連単オッズを記録して比べる必要がある。
+- 3回目（買われすぎを外す10本）は全滅。notes/patterns.md。
