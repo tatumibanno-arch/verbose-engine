@@ -15,6 +15,7 @@
   1. `git pull --rebase --autostash origin claude/tender-newton-ymc8j0`
   2. `python scripts/ingest.py performance --date 当日`（成績）→ `python scripts/ingest.py schedule --date 翌日`（番組表）→ `python scripts/scrape_web.py --date 当日 --pages beforeinfo`（チルト・部品交換）
   3. `python scripts/analysis/g1_prep.py --jcd 11 --from 20261114 --to 20261119 --title "…" --out notes/reads/biwako-taisho-2026-11.md`、丸亀は `--jcd 15 --from 20261115 --to 20261120 --out notes/reads/marugame-kyogokusho-2026-11.md`
+  3b. 厳選レース（2026-11-15 追加、運用者の方針「データだけ集めてレースを厳選、予想は自分でやる」）: `python scripts/analysis/pick_races.py --date 翌日 --dossier "びわこ=notes/reads/biwako-taisho-2026-11.md" --dossier "丸亀=notes/reads/marugame-kyogokusho-2026-11.md" --out notes/reads/picks-翌日(YYYY-MM-DD).md --n 6`。開催が終わった場は外す（番組の日付が合わない資料は自動で飛ばす）。買い目は出さない。司令塔への報告に、選んだレースと理由を1行ずつ足す。
   4. notes/ だけコミットしてプッシュ。Parquet の書き出しは転がしチャットの夜の処理に任せる（同じファイルを2つのチャットが書くとぶつかるため）。
   - 丸亀の前検は 11/14 の夕方以降に 3 を回せば入る（選手ごとのモーターが決まる）。
 - 環境メモ: 新しいコンテナでは `pip install pyarrow boatrace-lzh` が要る。`data/boatrace.db` の組み立ては約2分（9GB）。Parquet は成績 11/08 までだったので、11/09〜13 の成績と 11/10〜14 の番組表はこのチャットの作業用DBにだけ取り込んだ（Parquet には書いていない）。
