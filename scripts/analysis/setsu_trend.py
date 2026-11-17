@@ -75,27 +75,19 @@ def trend(g):
 
 
 def racer_trend_lines(m, racer_no):
+    """日ごとに「・」で区切る。日の中の複数走は「/」。"""
     g = m[(m.racer_no == racer_no) & (m.hd < DAY)]
-    days = []
+    pos, exs, sts = [], [], []
     for hd, gd in g.groupby("hd"):
-        pos = "".join(str(int(p)) if pd.notna(p) else "・" for p in gd.position)
-        exs = "/".join(f"{x:.2f}({int(r)})" if pd.notna(x) else "-" for x, r in zip(gd.ex, gd.exr.fillna(0)))
-        sts = "/".join(("F" if s < 0 else "") + f"{abs(s):.2f}".lstrip("0") if pd.notna(s) else "-" for s in gd.st)
-        days.append((md(hd), pos, exs, sts))
-    parts = [f"{md(r.hd)} {r.rno}R {'・'.join(r.parts)}" for r in g.itertuples() if r.parts]
-    tilts = g.tilt.dropna()
-    tl = " → ".join(f"{t:+.1f}" for t in tilts.drop_duplicates()) if len(tilts) else "-"
-    # 連続して同じ値なら1つにまとめる
-    tv = [t for i, t in enumerate(tilts) if i == 0 or t != tilts.iloc[i - 1]]
-    tl = " → ".join(f"{t:+.1f}".replace("+0.0", "0.0") for t in tv) if tv else "-"
-    return dict(
-        pos=" ".join(f"{d}:{p}" for d, p, _, _ in days),
-        ex=" ／ ".join(f"{d} {e}" for d, _, e, _ in days),
-        st=" ／ ".join(f"{d} {s}" for d, _, _, s in days),
-        avg_ex=g.ex.mean(), first_ex=g[g.hd == g.hd.min()].ex.mean(), last_ex=g[g.hd == g.hd.max()].ex.mean(),
-        parts="、".join(parts) if parts else "なし", tilt=tl, trend=trend(g),
-        st_mean=g.st.mean(),
-    )
+        pos.append("".join(str(int(p)) if pd.notna(p) else "欠" for p in gd.position))
+        exs.append("/".join(f"{x:.2f}({int(r)})" if pd.notna(x) else "-" for x, r in zip(gd.ex, gd.exr.fillna(0))))
+        sts.append("/".join(("F" if s < 0 else "") + f"{abs(s):.2f}".lstrip("0") if pd.notna(s) else "-" for s in gd.st))
+    parts = [f"{md(r.hd)}{r.rno}R {'・'.join(r.parts)}" for r in g.itertuples() if r.parts]
+    tilts = g.tilt.dropna().tolist()
+    tv = [t for i, t in enumerate(tilts) if i == 0 or t != tilts[i - 1]]  # 続けて同じ値は1つに
+    tl = "→".join(f"{t:+.1f}".replace("+0.0", "0") for t in tv) if tv else "-"
+    return dict(pos="・".join(pos), ex="→".join(exs), st="→".join(sts), st_mean=g.st.mean(),
+                parts="、".join(parts) if parts else "なし", tilt=tl, trend=trend(g))
 
 
 # ---------- モーターの前の節 ----------
@@ -135,7 +127,8 @@ def motor_prev(h, mno, n=2):
         lab = "良かった" if res <= -0.4 else "悪かった" if res >= 0.4 else "普通"
         if pd.notna(exm):
             lab += "・展示も出ていた" if exm <= 2.9 else "・展示は出ていない" if exm >= 4.1 else ""
-        out.append(f"{md(gm.hd.min())}〜 {gm.racer_name.iloc[0]}({gm.grade.iloc[0]}・勝率{f2(gm.nwr.iloc[0])}) 着 {pos}・展示順位 {exr}（平均{f2(exm,1)}）・残り{res:+.2f} → {lab}")
+        who = gm.racer_name.iloc[0].replace(" ", "").replace("　", "")
+        out.append(f"{md(gm.hd.min())}〜 {who}({gm.grade.iloc[0]}・勝率{f2(gm.nwr.iloc[0])}) 着{pos} 展示順位{exr}(平均{f2(exm, 1)}) 残り{res:+.2f}→{lab}")
     return out
 
 
@@ -238,12 +231,11 @@ def main():
             out += [f"### {VENUES[jcd]} {rno}R（{g.race_name.iloc[0]}）", ""]
             for r in g.itertuples():
                 x = racer_trend_lines(m, r.racer_no)
-                out.append(f"- **{r.lane}号艇 {r.racer_name}**（{int(r.motor_no)}号機）: {x['trend']}")
-                out.append(f"  - 着順 {x['pos']}")
-                out.append(f"  - 展示 {x['ex']}（初日平均 {f2(x['first_ex'])}→直近日 {f2(x['last_ex'])}）")
-                out.append(f"  - ST {x['st']}（平均 {f2(x['st_mean'])}）・チルト {x['tilt']}・部品交換 {x['parts']}")
+                out.append(f"- **{r.lane} {r.racer_name}**（{int(r.motor_no)}号機）**{x['trend']}**")
+                out.append(f"  - 着 {x['pos']}／展示 {x['ex']}")
+                out.append(f"  - ST {x['st']}（平均{f2(x['st_mean'])}）／チルト {x['tilt']}／部品 {x['parts']}")
                 mp = motor_prev(hm[jcd], int(r.motor_no))
-                out.append("  - モーターの前の節: " + (" ／ ".join(mp) if mp else "記録なし"))
+                out.append("  - 機の前節: " + (" ／ ".join(mp) if mp else "記録なし"))
                 if jcd == "15":
                     out.append("  - 勝負駆け: " + kakegake(tt, r.racer_no, rno, act, idx, inside, finish, q))
             out.append("")
