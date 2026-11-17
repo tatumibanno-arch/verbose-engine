@@ -82,7 +82,7 @@ def racer_trend_lines(m, racer_no):
         pos.append("".join(str(int(p)) if pd.notna(p) else "欠" for p in gd.position))
         exs.append("/".join(f"{x:.2f}({int(r)})" if pd.notna(x) else "-" for x, r in zip(gd.ex, gd.exr.fillna(0))))
         sts.append("/".join(("F" if s < 0 else "") + f"{abs(s):.2f}".lstrip("0") if pd.notna(s) else "-" for s in gd.st))
-    parts = [f"{md(r.hd)}{r.rno}R {'・'.join(r.parts)}" for r in g.itertuples() if r.parts]
+    parts = [f"{md(r.hd)} {r.rno}R {'・'.join(r.parts)}" for r in g.itertuples() if r.parts]
     tilts = g.tilt.dropna().tolist()
     tv = [t for i, t in enumerate(tilts) if i == 0 or t != tilts[i - 1]]  # 続けて同じ値は1つに
     tl = "→".join(f"{t:+.1f}".replace("+0.0", "0") for t in tv) if tv else "-"
@@ -205,7 +205,8 @@ def main():
             "11/15〜17 の丸亀で事故（着順なし）の記録は無かった。山田祐也は 11/15 の1走のあと番組に無い（途中帰郷とみられる）ので順位から外した。",
             "11/18 の 12R は番組上「一般」（予選でない）なので得点に数えていない。もし予選扱いなら、その6人（石丸・原田・佐藤隆・船岡・渡邉和・前田）の数字は変わる。",
             f"今日の予選（1〜11R）を枠だけの強さ（当地3年の枠別1着率 {'/'.join(f'{x:.0%}' for x in w)}）で {a.sims:,} 回並べ替えた試算で、"
-            f"最終の18位の得点率は 10%点 {q[0]:.2f}・中央 {q[1]:.2f}・90%点 {q[2]:.2f}。今の18位は {t[t['rank']<=18].rate.min():.2f}。",
+            f"最終の18位の得点率は 10%点 {q[0]:.2f}・中央 {q[1]:.2f}・90%点 {q[2]:.2f}（以下「低め〜高め」）。今の18位は {t[t['rank']<=18].rate.min():.2f}。"
+            "今日は1走あたり平均約5.2点しか入らないので、上位も下位も5点台に寄り、18位の線は今より下がる見込み（plan の「6.00前後」より低め）。",
             "「準優確率」はその試算で18位以内（同点は乗る側に数えた）に入った割合。選手の力・モーターは入れていないので粗い目安。", "",
             "| 順 | 選手 | 節間（D=ドリーム） | 得点 | 走 | 得点率 | 今日の出走 | 今日の予選 | 準優確率（目安） |", "|---|---|---|---|---|---|---|---|---|"]
     for r in t.itertuples():
@@ -220,7 +221,7 @@ def main():
     mts = {"11": load_meet("11", MEETS["11"]["start"], DAY), "15": m15}
     tt = t.set_index("racer_no")
     out += ["## 2. レースごと（節間の流れ・モーターの前の節・丸亀は勝負駆け）", "",
-            "- 着順は日ごと（11/14〜、丸亀は 11/15〜）。展示は「タイム(レース内順位)」、ST は本番のスタート（F は F）。",
+            "- 着順は日ごと（びわこ 11/14〜、丸亀 11/15〜）を「・」で区切る。「欠」は着順なし（事故・欠場など）。展示は直前情報の「タイム(レース内順位)」、ST は本番のスタート。",
             "- 上向き／下向きは、前半と直近2走の平均着・平均展示順位の差で機械的に付けた目安。",
             "- モーターの前の節は、この節より前の直近2節（新しい順）。残り＝着順を枠と乗り手の全国勝率で説明した残り（マイナスほど良い）。",
             "  良かった＝残り -0.40 以下、悪かった＝+0.40 以上。展示順位はその節の6艇中の順位（成績ファイルの展示タイムから）。", ""]
@@ -228,16 +229,38 @@ def main():
         m = mts[jcd]
         for rno in MEETS[jcd]["races"]:
             g = m[(m.hd == DAY) & (m.rno == rno)].sort_values("lane")
+            head = len(out)
             out += [f"### {VENUES[jcd]} {rno}R（{g.race_name.iloc[0]}）", ""]
+            summ = {"上向き": [], "下向き": [], "前節良": [], "前節悪": [], "駆け": []}
             for r in g.itertuples():
                 x = racer_trend_lines(m, r.racer_no)
+                nm = "①②③④⑤⑥"[r.lane - 1] + (r.racer_name.split()[0] if " " in r.racer_name else r.racer_name[:2])
+                for k in ("上向き", "下向き"):
+                    if x["trend"].startswith(k):
+                        summ[k].append(nm)
                 out.append(f"- **{r.lane} {r.racer_name}**（{int(r.motor_no)}号機）**{x['trend']}**")
                 out.append(f"  - 着 {x['pos']}／展示 {x['ex']}")
                 out.append(f"  - ST {x['st']}（平均{f2(x['st_mean'])}）／チルト {x['tilt']}／部品 {x['parts']}")
                 mp = motor_prev(hm[jcd], int(r.motor_no))
+                if mp:
+                    labs = [z.split("→")[-1] for z in mp]
+                    if any(l.startswith("良かった") for l in labs):
+                        summ["前節良"].append(nm)
+                    if any(l.startswith("悪かった") for l in labs):
+                        summ["前節悪"].append(nm)
                 out.append("  - 機の前節: " + (" ／ ".join(mp) if mp else "記録なし"))
                 if jcd == "15":
-                    out.append("  - 勝負駆け: " + kakegake(tt, r.racer_no, rno, act, idx, inside, finish, q))
+                    kk = kakegake(tt, r.racer_no, rno, act, idx, inside, finish, q)
+                    out.append("  - 勝負駆け: " + kk)
+                    need = kk.split("**")[1] if "**" in kk else ""
+                    if need and "圏外" not in need and "当確" not in need:
+                        summ["駆け"].append(f"{nm}（{need.split('、')[0]}）")
+            line = (f"要約: 上向き {'・'.join(summ['上向き']) or 'なし'}／下向き {'・'.join(summ['下向き']) or 'なし'}"
+                    f"／機の前節が良かった {'・'.join(summ['前節良']) or 'なし'}／悪かった {'・'.join(summ['前節悪']) or 'なし'}")
+            if jcd == "15":
+                line += f"／勝負駆け {'・'.join(summ['駆け']) or 'なし'}"
+            out.insert(head + 2, line)
+            out.insert(head + 3, "")
             out.append("")
     Path(a.out).write_text("\n".join(out) + "\n", encoding="utf-8")
     print("wrote", a.out)
@@ -269,12 +292,16 @@ def kakegake(tt, rn, rno, act, idx, inside, finish, q):
     elif probs[5] >= 0.9:
         need = "6着でもほぼ乗る（当確に近い）"
     else:
-        need = (f"五分は{max(ok50)}着以内" if ok50 else "1着でも五分に届かない") + "、" + (f"安全は{max(ok90)}着以内" if ok90 else "1着でも安全とは言えない")
+        if not ok50:
+            need = f"1着でも五分に届かない（1着で{probs[0]:.0%}）"
+        else:
+            need = f"五分は{max(ok50)}着以内、" + (f"安全は{max(ok90)}着以内" if ok90 else f"1着でも安全とは言えない（1着で{probs[0]:.0%}）")
     if len(r.today_q) == 1:
         rates = " ".join(f"{p}着{(r.pts + PTS[p]) / (r.n + 1):.2f}" for p in range(1, 7))
         detail = f"最終 {rates}"
     else:
-        other = ",".join(f"{x}R" for x in r.today_q if x != rno)
+        oth = [x for x in r.today_q if x != rno]
+        other = ",".join(f"{x}R" for x in oth) + ("（先に走る。その結果で必要な着が決まる）" if oth and max(oth) < rno else "（後に走る）")
         nd = [int(np.ceil(b * (r.n + 2) - r.pts - 1e-9)) for b in q]
         def c(n):
             return "6着2本でも可" if n <= 2 else "1着2本でも不足" if n > 20 else f"{n}点（{min_combos(n)}）"
