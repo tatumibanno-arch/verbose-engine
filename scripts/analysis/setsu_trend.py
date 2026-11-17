@@ -212,7 +212,7 @@ def main():
         rk = "-" if not r.active else int(r.rank)
         pq = "-" if not r.active else f"{pin.get(r.racer_no, 0):.0%}"
         name = r.racer_name + ("（帰郷？）" if not r.active else "")
-        out.append(f"| {rk} | {name} | {r.seq} | {int(r.pts)} | {int(r.n)} | {f2(r.rate)} | {r.today_all or '-'} | {len(r.today_q)}走 | {pq} |")
+        out.append(f"| {rk} | {name} | {r.seq} | {int(r.pts)} | {int(r.n)} | {f2(r.rate)} | {r.today_all if isinstance(r.today_all, str) else '-'} | {len(r.today_q)}走 | {pq} |")
     out.append("")
 
     # ---- 2・3. レースごと ----
@@ -243,47 +243,43 @@ def main():
     print("wrote", a.out)
 
 
+def min_combos(nd):
+    """2走合計で nd 点以上になる「一番悪い」着の組み合わせ（どちらかを1つ悪くすると届かないもの）。"""
+    ok = lambda x, y: PTS[x] + PTS[y] >= nd
+    res = []
+    for x in range(1, 7):
+        for y in range(x, 7):
+            if ok(x, y) and not (y < 6 and ok(x, y + 1)) and not (x < y and ok(x + 1, y)):
+                res.append(f"{x}着+{y}着")
+    return "・".join(res)
+
+
 def kakegake(tt, rn, rno, act, idx, inside, finish, q):
     r = tt.loc[rn]
-    base = f"いま {int(r.pts)}点/{int(r.n)}走＝{f2(r.rate)}（{int(r['rank'])}位）。今日の予選 {len(r.today_q)}走（{','.join(f'{x}R' for x in r.today_q)}）。"
+    base = f"{f2(r.rate)}（{int(r['rank'])}位、{int(r.pts)}点/{int(r.n)}走）・今日の予選{len(r.today_q)}走"
     if rn not in idx or (rno, rn) not in finish:
-        return base + "このレースは得点に数えない番組。"
+        return base + "。このレースは得点に数えない番組。"
     i = idx[rn]; f = finish[(rno, rn)]
-    probs = []
-    for p in range(1, 7):
-        sel = f == p
-        probs.append(inside[sel, i].mean() if sel.sum() else np.nan)
-    ps = "・".join(f"{p}着{pr:.0%}" for p, pr in zip(range(1, 7), probs))
-    if len(r.today_q) == 1:
-        rates = [(r.pts + PTS[p]) / (r.n + 1) for p in range(1, 7)]
-        rs = "・".join(f"{p}着{x:.2f}" for p, x in zip(range(1, 7), rates))
-        need_mid = [p for p, x in zip(range(1, 7), rates) if x >= q[1]]
-        need_hi = [p for p, x in zip(range(1, 7), rates) if x >= q[2]]
-        need_lo = [p for p, x in zip(range(1, 7), rates) if x >= q[0]]
-        def s(lst):
-            return f"{max(lst)}着以内" if lst else "1着でも届かない"
-        msg = (f"最終の得点率は {rs}。18位の目安 {q[0]:.2f}〜{q[2]:.2f}（中央{q[1]:.2f}）に対し、"
-               f"低めの線なら{s(need_lo)}・中央なら{s(need_mid)}・高めの線でも乗るのは{s(need_hi)}。")
-        if need_hi and max(need_hi) == 6:
-            msg = f"最終の得点率は {rs}。6着でも 18位の高めの線 {q[2]:.2f} 以上で、ほぼ当確（減点が無ければ）。"
+    probs = [inside[f == p, i].mean() if (f == p).sum() else np.nan for p in range(1, 7)]
+    ps = " ".join(f"{p}着{pr:.0%}" for p, pr in zip(range(1, 7), probs))
+    ok50 = [p for p, pr in zip(range(1, 7), probs) if pr >= 0.5]
+    ok90 = [p for p, pr in zip(range(1, 7), probs) if pr >= 0.9]
+    if probs[0] < 0.05:
+        need = "1着でもほぼ届かない（圏外）"
+    elif probs[5] >= 0.9:
+        need = "6着でもほぼ乗る（当確に近い）"
     else:
-        other = [x for x in r.today_q if x != rno]
-        tot_need = {}
-        for name, b in (("低め", q[0]), ("中央", q[1]), ("高め", q[2])):
-            need = int(np.ceil(b * (r.n + 2) - r.pts - 1e-9))
-            tot_need[name] = need
-        def ex(nd):
-            if nd <= 2:
-                return "6着2本でも可"
-            if nd > 20:
-                return "1着2本でも届かない"
-            # 例として、合計に届く一番悪い組み合わせ
-            best = sorted({(x, y) for x in range(1, 7) for y in range(x, 7) if PTS[x] + PTS[y] >= nd}, key=lambda c: (-c[1], -c[0]))
-            c = best[0]
-            return f"{nd}点以上（例 {c[0]}着+{c[1]}着）"
-        msg = (f"今日2走（もう1走は {','.join(f'{x}R' for x in other)}）。2走合計で 18位の低めの線 {q[0]:.2f} なら{ex(tot_need['低め'])}、"
-               f"中央 {q[1]:.2f} なら{ex(tot_need['中央'])}、高め {q[2]:.2f} なら{ex(tot_need['高め'])}。")
-    return base + msg + f" 試算の準優確率（このレースの着ごと、もう1走と他レースは枠だけで回した）: {ps}。"
+        need = (f"五分は{max(ok50)}着以内" if ok50 else "1着でも五分に届かない") + "、" + (f"安全は{max(ok90)}着以内" if ok90 else "1着でも安全とは言えない")
+    if len(r.today_q) == 1:
+        rates = " ".join(f"{p}着{(r.pts + PTS[p]) / (r.n + 1):.2f}" for p in range(1, 7))
+        detail = f"最終 {rates}"
+    else:
+        other = ",".join(f"{x}R" for x in r.today_q if x != rno)
+        nd = [int(np.ceil(b * (r.n + 2) - r.pts - 1e-9)) for b in q]
+        def c(n):
+            return "6着2本でも可" if n <= 2 else "1着2本でも不足" if n > 20 else f"{n}点（{min_combos(n)}）"
+        detail = f"もう1走は{other}。2走合計で 低め{q[0]:.2f}なら{c(nd[0])}、高め{q[2]:.2f}なら{c(nd[2])}"
+    return f"{base}。**{need}**。{detail}。準優確率 {ps}"
 
 
 if __name__ == "__main__":
