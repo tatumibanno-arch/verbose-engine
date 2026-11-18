@@ -125,7 +125,7 @@ def main() -> int:
     ap.add_argument("--date", required=True)
     ap.add_argument("--dossier", action="append", required=True)
     ap.add_argument("--budget", type=int, default=1000)
-    ap.add_argument("--lo", type=float, default=10)
+    ap.add_argument("--lo", type=float, default=14)
     ap.add_argument("--hi", type=float, default=20)
     ap.add_argument("--maxpts", type=int, default=10)
     ap.add_argument("--min-ratio", type=float, default=1.15)
