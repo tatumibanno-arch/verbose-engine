@@ -58,10 +58,25 @@ def fetch(page: str, hd: str, jcd: str, rno: int, session: requests.Session) -> 
                 return r.text
             if r.status_code == 404:
                 return None
+            if r.status_code == 403:  # 2026-11-18: Python の取得だけ 403 になる。同じ UA の curl では取れる
+                txt = _curl(url)
+                if txt:
+                    return txt
         except requests.RequestException:
             pass
         time.sleep(2 ** (attempt + 1))
     raise RuntimeError(f"fetch failed: {url}")
+
+
+def _curl(url: str) -> str | None:
+    import subprocess
+    try:
+        p = subprocess.run(["curl", "-sS", "--max-time", "30", "-A", UA["User-Agent"], "-w", "\n%{http_code}", url],
+                           capture_output=True, timeout=40)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    body, _, code = p.stdout.decode("utf-8", "replace").rpartition("\n")
+    return body if code.strip() == "200" else None
 
 
 # ---------------------------------------------------------------- parsers

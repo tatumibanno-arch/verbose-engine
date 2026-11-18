@@ -84,10 +84,14 @@ def scan(a, S, seen):
             mins = (close - now).total_seconds() / 60
             if not (a.min_before <= mins <= a.max_before):
                 continue
-            bi = sw.parse_beforeinfo(sw.fetch("beforeinfo", a.date, jcd, rno, S) or "")
-            if not bi or not all(x.get("exhibition_time") for x in bi):
+            try:
+                bi = sw.parse_beforeinfo(sw.fetch("beforeinfo", a.date, jcd, rno, S) or "")
+                if not bi or not all(x.get("exhibition_time") for x in bi):
+                    continue
+                odds = {c: v for _, c, v, _ in sw.parse_odds3t(sw.fetch("odds3t", a.date, jcd, rno, S) or "") if v}
+            except Exception as e:  # 取得失敗は次の周回でやり直す
+                print(f"{vname}{rno}R 取得失敗: {e}", file=sys.stderr, flush=True)
                 continue
-            odds = {c: v for _, c, v, _ in sw.parse_odds3t(sw.fetch("odds3t", a.date, jcd, rno, S) or "") if v}
             if len(odds) < 100:
                 continue
             seen.add(key)
