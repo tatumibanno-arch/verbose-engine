@@ -44,7 +44,7 @@ def main() -> int:
     S = requests.Session()
     b = sw.parse_beforeinfo(sw.fetch("beforeinfo", a.date, a.jcd, a.rno, S) or "")
     if b and b[0].get("exhibition_time"):
-        ex = sorted(b, key=lambda r: r["exhibition_time"])
+        ex = sorted(b, key=lambda r: r["exhibition_time"] if r["exhibition_time"] is not None else 99)
         rank = {r["lane"]: i + 1 for i, r in enumerate(ex)}
         for r in b:
             print(f"{r['lane']}号艇 展示{r['exhibition_time']}({rank[r['lane']]}位) 進入{r.get('start_course')} スタ展{r.get('start_st_raw')} チルト{r.get('tilt')} 部品{r.get('parts_changed') or '-'}")
