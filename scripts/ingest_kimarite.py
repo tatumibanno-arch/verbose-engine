@@ -25,7 +25,7 @@ def fetch(hd: str):
     if not f.exists():
         for i in range(4):
             try:
-                r = requests.get(URL.format(ym=hd[:6], ymd=hd[2:]), timeout=30)
+                r = requests.get(URL.format(ym=hd[:6], ymd=hd[2:]), timeout=90)
                 if r.status_code == 404:
                     return hd, None   # 開催なし
                 r.raise_for_status(); f.write_bytes(r.content); break
