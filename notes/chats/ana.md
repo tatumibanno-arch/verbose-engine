@@ -29,3 +29,11 @@
 - 4回目（市場の形の12本）も全滅。`python scripts/analysis/ana_market.py OUT.parquet`。次の案は notes/patterns.md 末尾。
 - 決まり手: `python scripts/ingest_kimarite.py --from YYYYMMDD --to YYYYMMDD`（毎晩その日の分を足すなら同じ日付を from/to に）。5回目（癖の筋書き12本）も全滅。`python scripts/analysis/ana_kimarite.py OUT.parquet`。
 - 今日の候補: `python scripts/analysis/ana_today.py`（番組表で前夜条件を絞り、締切前のレースは展示と今のオッズで S5・S6 を判定。boatrace.jp は1回8秒ほどかかる）。
+
+## 2026-11-21 戦法づくりの状況（運用者の指示「何とか編み出して」）
+- 上限確認: 手元の材料（市場・展示タイム・スタ展・今節ST・枠別・モーター・級・風）を全部入れた見立てでも、最良の帯で回収0.80（scripts/analysis/ana_best_model.py）。同じ材料の組み替えでは勝てない。
+- 次の一手: 市場が持っていない材料として、独自の展示タイム（一周・まわり足・直線＝出足・回り足に近い数字）を集めて検証する。
+- 入手先の候補: 公式の配信サイト BOATCAST（race.boatcast.jp。boatrace.jp の場データページからリンクされている）。場ごとの公式サイト（kiryu-kyotei.com など）はネットワーク設定で届かない。
+- 2026-11-21 に Default 環境の許可ホストへ race.boatcast.jp を追加（運用者が承認）。ただし、このセッションではそのサイトへのアクセスが安全確認（自動の権限判定）で止められ、中身は未確認。データの場所・形式はまだ分かっていない（推測でファイル名を当てにいくのはやめた）。
+- 再開するとき: 運用者に BOATCAST へのアクセスを明示的に許可してもらう → 入口ページからデータの場所を確認 → 毎日記録するスクリプト → 数週間貯めて、筋書きを先に固定して検証。
+- 今日作った道具: ana_dossier.py（材料まとめ）、ana_live.py（展示・オッズ・結果）、ana_ev.py、ana_manshu.py、ana_daytrend.py、ana_funaashi.py、ana_best_model.py。公式サイトは Python の requests だと 403 になるので curl で取る。
