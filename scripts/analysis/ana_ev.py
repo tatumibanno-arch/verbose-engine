@@ -67,7 +67,7 @@ for i, r in w.iterrows():
     for k in range(1, 7):
         qh = sum(v for kk, v in q.items() if kk[0] == str(k))
         res.append(dict(レース=f"{VENUES[r.jcd]}{r.rno}R", 締切=r.close_time, 艇=k, 選手=names.get((r.jcd, r.rno, k), ""), 見立て=pt[i, k - 1], 市場=qh / S, 比=pt[i, k - 1] / (qh / S), 頭の合成=1 / qh,
-                        材料=f"枠1着率{r[f'cw{k}']}% 全国{r[f'nw{k}']} モーター{r[f'mo{k}']}% 級{int(r[f'gr{k}'])}"))
+                        材料=f"枠1着率{r[f'cw{k}']}% 全国{r[f'nw{k}']} モーター{r[f'mo{k}']}% 級{r[f'gr{k}']}"))
 t = pd.DataFrame(res); t.to_csv(sys.argv[2].replace(".txt", ".csv"), index=False)
 P(f"\n== 今日（{now:%H:%M}時点、{t.レース.nunique()}レース）: 見立てのほうが市場より高い艇（市場の頭5%以上、比の高い順）==")
 pd.set_option("display.width", 250); pd.set_option("display.max_colwidth", 60)
