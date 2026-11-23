@@ -3,6 +3,7 @@
 発見=2025-04〜2026-03、検証=2026-04〜。締切時オッズ（締切前とは違う）。 build / fit"""
 import sqlite3, sys, json, numpy as np, pandas as pd, warnings; warnings.filterwarnings('ignore')
 D='/tmp/claude-0/-home-user-verbose-engine/968008a0-6ecf-5641-a3ff-006912b41722/scratchpad/n2/'; key=['hd','jcd','rno']
+CAPV=float(sys.argv[2]) if len(sys.argv)>2 else 20.0; OUTF='cheap.parquet' if CAPV==20 else f'cheap{int(CAPV)}.parquet'
 def build():
     c=sqlite3.connect('data/boatrace.db'); rows=[]
     p=pd.read_sql("select hd,jcd,rno,combination res,payout from payouts where ticket_type='sanrensho' and hd>='20250401'",c).drop_duplicates(key)
@@ -12,7 +13,7 @@ def build():
         if o.empty: continue
         o['inv']=1/o.odds; g=o.groupby(key).inv; o['tot']=g.transform('sum'); o['n']=g.transform('size'); o['h']=o.cb.str[0]
         o['ph']=o.groupby(key+['h']).inv.transform('sum')/o.tot; o['rk']=o.groupby(key).odds.rank(method='first')
-        rows.append(o[(o.n>=110)&(o.odds<20)].drop(columns=['n','h'])); print(m,flush=True)
+        rows.append(o[(o.n>=110)&(o.odds<CAPV)].drop(columns=['n','h'])); print(m,flush=True)
     O=pd.concat(rows).merge(p,on=key); O['hit']=(O.cb==O.res).astype(int); O['q']=O.inv/O.tot
     E=pd.read_parquet(D+'ob_ent.parquet')
     for q in ('mo','nw'): E[q]=pd.to_numeric(E[q],errors='coerce')
@@ -33,7 +34,7 @@ def build():
     for pos,ix in (('a',0),('b',2),('c',4)):
         O['lane']=O.cb.str[ix].astype(int); O=O.merge(F[key+['lane']+feats].rename(columns={f:f'{pos}_{f}' for f in feats}),on=key+['lane'],how='left'); O=O.rename(columns={'lane':f'{pos}_lane'})
     w=F.groupby(key).agg(wind=('wind','max'),moved=('moved','max')).reset_index(); O=O.merge(w,on=key,how='left'); O['jc']=O.jcd.astype(int)
-    O.to_parquet(D+'cheap.parquet'); print(len(O),O.hit.mean())
+    O.to_parquet(D+OUTF); print(len(O),O.hit.mean())
 def fit():
     from sklearn.ensemble import HistGradientBoostingClassifier
     O=pd.read_parquet(D+'cheap.parquet'); O['lq']=np.log(O.q/(1-O.q)); O['pay']=np.where(O.hit==1,O.payout,0)
