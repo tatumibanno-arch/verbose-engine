@@ -60,14 +60,15 @@ def build():
     names=list(A); M=np.column_stack([A[n].fillna(False).values for n in names]).astype(bool)
     np.save(D+'oh_M.npy',M); json.dump(names,open(D+'oh_names.json','w'),ensure_ascii=False)
     O[key+['cb','odds','inv','tot','hit','payout','pay','per']].to_parquet(D+'oh_rows.parquet'); print('組',len(O),'部品',len(names))
-def fake_pay(seed):
-    R=pd.read_parquet(D+'oh_rows.parquet'); rng=np.random.default_rng(seed); rid=(R.hd+R.jcd+R.rno.astype(str)).values; gi,_=pd.factorize(rid); ng=gi.max()+1
+def fake_pay(seed,pre='oh'):
+    R=pd.read_parquet(D+f'{pre}_rows.parquet'); rng=np.random.default_rng(seed); rid=(R.hd+R.jcd+R.rno.astype(str)).values; gi,_=pd.factorize(rid); ng=gi.max()+1
     q=(R.inv/R.tot).values; sq=np.bincount(gi,weights=q,minlength=ng); key_=np.log(rng.random(len(R)))/R.inv.values; mx=np.full(ng,-np.inf); np.maximum.at(mx,gi,key_)
     win=key_==mx[gi]; has=(rng.random(ng)<sq)[gi]; return np.where(win&has,R.odds.values*100,0).astype('float32')
-def mine(tag):
-    M=np.load(D+'oh_M.npy'); names=json.load(open(D+'oh_names.json')); R=pd.read_parquet(D+'oh_rows.parquet'); per=R.per.values
-    pay=R.pay.values if tag=='real' else fake_pay({'fake1':1,'fake2':2,'fake3':3}[tag])
-    S0=M[per==0]; Y0=pay[per==0]; F0=S0.astype(np.float32); n=len(names); MIN=1500; found=[]
+def mine(tag,pre='oh',cap=None,MIN=1500,TH=1.05):
+    M=np.load(D+f'{pre}_M.npy'); names=json.load(open(D+f'{pre}_names.json')); R=pd.read_parquet(D+f'{pre}_rows.parquet'); per=R.per.values
+    pay=R.pay.values if tag=='real' else fake_pay({'fake1':1,'fake2':2,'fake3':3}[tag],pre)
+    if cap: keep=R.odds.values<cap; M=M[keep]; per=per[keep]; pay=pay[keep]
+    S0=M[per==0]; Y0=pay[per==0]; F0=S0.astype(np.float32); n=len(names); found=[]
     for i in range(n):
         mi=S0[:,i]
         if mi.sum()<MIN: continue
@@ -75,12 +76,12 @@ def mine(tag):
             mij=mi&S0[:,j]; cnt2=int(mij.sum())
             if cnt2<MIN: continue
             y=Y0[mij]; r2=y.sum()/(100*cnt2)
-            if r2>=1.05: found.append(((i,j),cnt2,r2))
+            if r2>=TH: found.append(((i,j),cnt2,r2))
             sub=F0[mij]; cnt=sub.sum(0); sm=y@sub
             for k in range(j+1,n):
                 if MIN<=cnt[k]<cnt2:
                     r3=sm[k]/(100*cnt[k])
-                    if r3>=1.05: found.append(((i,j,k),int(cnt[k]),float(r3)))
+                    if r3>=TH: found.append(((i,j,k),int(cnt[k]),float(r3)))
         if i%10==0: print(tag,i,'/',n,'見つかった',len(found),flush=True)
     rows=[]
     for idx,c0,r0 in found:
@@ -88,9 +89,43 @@ def mine(tag):
         for p,nm in ((1,'確かめる'),(2,'最後')):
             mm=m&(per==p); cc=int(mm.sum()); row[nm+'点数']=cc; row[nm]=round(pay[mm].sum()/(100*cc),3) if cc else np.nan
         rows.append(row)
-    T=pd.DataFrame(rows); T.to_csv(D+f'oh_{tag}.csv',index=False)
-    print(f'[{tag}] 探す期間で1.05以上: {len(T)}本 → 確かめる期間でも1.0以上: {(T.確かめる>=1).sum() if len(T) else 0}本 → 最後も1.0以上: {((T.確かめる>=1)&(T.最後>=1)).sum() if len(T) else 0}本',flush=True)
+    T=pd.DataFrame(rows,columns=['条件','探す点数','探す','確かめる点数','確かめる','最後点数','最後']); T.to_csv(D+f'{pre}{"_cap"+str(cap) if cap else ""}_{tag}.csv',index=False)
+    print(f'[{pre} cap={cap} {tag}] 探す期間で1.05以上: {len(T)}本 → 確かめる期間でも1.0以上: {(T.確かめる>=1).sum() if len(T) else 0}本 → 最後も1.0以上: {((T.確かめる>=1)&(T.最後>=1)).sum() if len(T) else 0}本',flush=True)
+def build2():
+    """2連単版（2025-11〜2026-11）。部品は1着・2着の艇について同じもの。期間: 探す 2025-11〜2026-03 ／ 確かめる 2026-04〜07 ／ 最後 2026-08〜11。"""
+    c=sqlite3.connect('data/boatrace.db')
+    d=pd.read_sql("select hd,jcd,rno,combination cb,odds from odds where ticket_type='nirensho' and odds>0",c); d['inv']=1/d.odds
+    g=d.groupby(key).inv; d['tot']=g.transform('sum'); d['n']=g.transform('size'); d=d[d.n==30]; d['rk']=d.groupby(key).odds.rank(method='first')
+    d['a_lane']=d.cb.str[0].astype(int); d['b_lane']=d.cb.str[2].astype(int); d['ph']=d.groupby(key+['a_lane']).inv.transform('sum')/d.tot
+    p=pd.read_sql("select hd,jcd,rno,combination res,payout from payouts where ticket_type='nirensho'",c).drop_duplicates(key); d=d.merge(p,on=key); d['hit']=(d.cb==d.res).astype(int)
+    E=pd.read_parquet(D+'ob_ent.parquet'); E['g']=E.grade.map({'A1':4,'A2':3,'B1':2,'B2':1}); E['mo']=pd.to_numeric(E.mo,errors='coerce'); E['mod']=E.mo-E.groupby(key).mo.transform('mean')
+    o=pd.read_sql("select hd,jcd,rno,lane,lap,mawari,chokusen from oriten",c)
+    for q in ('lap','mawari','chokusen'): o[q]=o.groupby(key)[q].rank(method='min')
+    b=pd.read_sql("select hd,jcd,rno,lane,json_extract(data,'$.weight') wt,json_extract(data,'$.wind_speed') ws,json_extract(data,'$.wave_height') wv from beforeinfo where hd>='20251101'",c)
+    for q in ('wt','ws','wv'): b[q]=pd.to_numeric(b[q],errors='coerce')
+    b['wtd']=b.wt-b.groupby(key).wt.transform('mean'); env=b.groupby(key)[['ws','wv']].max().reset_index()
+    P=o.merge(b[key+['lane','wtd']],on=key+['lane'],how='left').merge(E[key+['lane','g','er','mod']],on=key+['lane'],how='left')
+    d=d.merge(o[key].drop_duplicates(),on=key)
+    for q in 'ab': d=d.merge(P.rename(columns={'lane':f'{q}_lane','lap':f'{q}_lap','mawari':f'{q}_maw','chokusen':f'{q}_cho','wtd':f'{q}_wtd','g':f'{q}_g','er':f'{q}_er','mod':f'{q}_mod'}),on=key+[f'{q}_lane'],how='left')
+    d=d.merge(env,on=key,how='left').merge(o[o.lane==1][key+['lap']].rename(columns={'lap':'lap1'}),on=key,how='left')
+    d['pay']=np.where(d.hit==1,d.payout,0).astype('float32'); d['per']=np.where(d.hd<'20260401',0,np.where(d.hd<'20260801',1,2)).astype('int8')
+    A={}
+    for q,nm in (('a','1着'),('b','2着')):
+        for k in range(1,7): A[f'{nm}={k}号艇']=d[f'{q}_lane']==k
+        for x,xn in (('lap','一周'),('maw','まわり足'),('cho','直線')):
+            A[f'{nm}{xn}1位']=d[f'{q}_{x}']==1; A[f'{nm}{xn}1〜2位']=d[f'{q}_{x}']<=2; A[f'{nm}{xn}3位以内']=d[f'{q}_{x}']<=3; A[f'{nm}{xn}5〜6位']=d[f'{q}_{x}']>=5
+        A[f'{nm}公式展示1〜2位']=d[f'{q}_er']<=2; A[f'{nm}公式展示5〜6位']=d[f'{q}_er']>=5; A[f'{nm}モーター+5以上']=d[f'{q}_mod']>=5; A[f'{nm}モーター-5以下']=d[f'{q}_mod']<=-5
+        A[f'{nm}体重2kg以上軽い']=d[f'{q}_wtd']<=-2; A[f'{nm}体重2kg以上重い']=d[f'{q}_wtd']>=2; A[f'{nm}A級']=d[f'{q}_g']>=3; A[f'{nm}B級']=d[f'{q}_g']<=2
+    for lo,hi in ((0,4),(4,8),(8,15),(15,30),(30,100)): A[f'オッズ{lo}〜{hi}倍']=(d.odds>=lo)&(d.odds<hi)
+    for lo,hi in ((0,.3),(.3,.5),(.5,.7),(.7,1.01)): A[f'頭の売れ方{int(lo*100)}〜{int(hi*100)}%']=(d.ph>=lo)&(d.ph<hi)
+    A['人気3番以内']=d.rk<=3; A['人気4〜8番']=d.rk.between(4,8); A['風0〜2m']=d.ws<=2; A['風5m以上']=d.ws>=5; A['波0〜1cm']=d.wv<=1; A['波4cm以上']=d.wv>=4; A['①一周1位']=d.lap1==1; A['①一周4〜6位']=d.lap1>=4
+    names=list(A); M=np.column_stack([A[n].fillna(False).values for n in names]).astype(bool)
+    np.save(D+'oh2_M.npy',M); json.dump(names,open(D+'oh2_names.json','w'),ensure_ascii=False)
+    d[key+['cb','odds','inv','tot','hit','payout','pay','per']].to_parquet(D+'oh2_rows.parquet'); print('2連単 組',len(d),'部品',len(names))
 if __name__=='__main__':
     a=sys.argv[1]
     if a=='build': build()
+    elif a=='build2': build2()
     elif a=='mine': mine(sys.argv[2])
+    elif a=='mine_cap': mine(sys.argv[2],'oh',20.0,800,1.03)
+    elif a=='mine2': mine(sys.argv[2],'oh2',None,800,1.03)
