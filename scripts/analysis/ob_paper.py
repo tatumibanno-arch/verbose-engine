@@ -15,11 +15,13 @@ CAP=15.0; GAP3=.10; GAP2=.08; MO=-5.0
 
 def lanes(c,a,b):
     e=pd.read_sql(f"select hd,jcd,rno,lane,racer_no,json_extract(data,'$.national_win_rate') nw,json_extract(data,'$.motor_2ren_rate') mo from entries where hd between '{a}' and '{b}'",c)
+    if e.empty: return None
     for q in ('nw','mo'): e[q]=pd.to_numeric(e[q],errors='coerce')
+    e['racer_no']=e.racer_no.astype(str)
     s=pd.read_sql("select hd shd,racer_no,data from racer_stats where hd>='20240401'",c); j=s.data.apply(json.loads)
     for k in range(1,7):
         s[f'n{k}']=j.apply(lambda x:x.get(f'c{k}_starts') or 0); s[f'a{k}']=j.apply(lambda x:(x.get(f'c{k}_pos1') or 0)+(x.get(f'c{k}_pos2') or 0)); s[f'b{k}']=j.apply(lambda x:(x.get(f'c{k}_pos3') or 0))
-    s=s.drop(columns='data'); e['d']=pd.to_datetime(e.hd); s['d']=pd.to_datetime(s.shd)
+    s['racer_no']=s.racer_no.astype(str); s=s.drop(columns='data'); e['d']=pd.to_datetime(e.hd); s['d']=pd.to_datetime(s.shd)
     e=pd.merge_asof(e.sort_values('d'),s.sort_values('d'),on='d',by='racer_no',allow_exact_matches=False)
     pick=lambda p:np.array([getattr(r,f'{p}{r.lane}') for r in e.itertuples()],dtype=float)
     e['cn']=np.nan_to_num(pick('n')); e['c2']=np.nan_to_num(pick('a')); e['c3']=e.c2+np.nan_to_num(pick('b'))
@@ -30,6 +32,7 @@ def sig(z): return 1/(1+np.exp(-z))
 
 def run(c,a,b):
     E=lanes(c,a,b); bets=[]
+    if E is None: return pd.DataFrame()
     pay={t:pd.read_sql(f"select hd,jcd,rno,combination res,payout from payouts where ticket_type='{t}' and hd between '{a}' and '{b}'",c).drop_duplicates(KEY).set_index(KEY) for t in ('sanrensho','nirensho')}
     # ---- 3連単
     o=pd.read_sql(f"select hd,jcd,rno,combination cb,odds from odds where ticket_type='sanrensho' and hd between '{a}' and '{b}' and odds>0",c)
