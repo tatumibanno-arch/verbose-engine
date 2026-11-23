@@ -44,3 +44,9 @@ print('\n== 公式展示で2・3着の順を決める1点 × ④以下が離れ�
 exo=lambda s:'1-'+np.where(s.E2<s.E3,'2','3')+'-'+np.where(s.E2<s.E3,'3','2')
 for th in (0.3,0.4,0.5): rep(f'  一周3位と4位の差 {th}秒以上',B[B.g34>=th],exo)
 rep('  ①と一周2位の差0.2秒未満',B[B.g12<.2],exo); rep('  ①と一周2位の差0.2秒未満＆3位と4位の差0.3秒以上',B[(B.g12<.2)&(B.g34>=.3)],exo)
+print('\n== 0.4秒以上の形が1日に何レースあるか')
+Q=B[B.g34>=.4]; days=pd.Series(sorted(d.hd.unique())); cnt=Q.groupby('hd').size().reindex(days,fill_value=0)
+print('日数',len(cnt),'1日あたり平均',round(cnt.mean(),2),' 0レースの日',(cnt==0).mean().round(3),' 1レース',(cnt==1).mean().round(3),' 2レース',(cnt==2).mean().round(3),' 3レース以上',(cnt>=3).mean().round(3),' 最多',cnt.max())
+import sys; sys.path.insert(0,'scripts'); from common import VENUES
+print('場ごとの件数（多い順）', {VENUES[j]:n for j,n in Q.jcd.value_counts().head(10).items()})
+print('出ない場（オリジナル展示なし）', sorted(VENUES[j] for j in set(VENUES)-set(d.jcd.unique())))
