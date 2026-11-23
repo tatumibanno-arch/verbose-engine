@@ -36,6 +36,20 @@ def prev_day(hd, n=1):
     return (pd.Timestamp(hd) - pd.Timedelta(days=n)).strftime("%Y%m%d")
 
 
+def _get(url):
+    """公式サイトの取得。2026-11-18 から Python の取得が 403 になるので、scrape_web と同じ UA で取り、だめなら curl。"""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import scrape_web as sw
+    import requests
+    r = requests.get(url, headers=sw.UA, timeout=30)
+    if r.status_code == 200:
+        return r.text
+    txt = sw._curl(url)
+    if txt is None:
+        raise RuntimeError(f"HTTP {r.status_code}")
+    return txt
+
+
 # ---------- 前検（公式） ----------
 def zenken():
     p = Path(f"notes/reads/sources/zenken_{a.jcd}_{a.d0}.json")
@@ -49,7 +63,7 @@ def zenken():
     warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
     url = f"https://www.boatrace.jp/owpc/pc/race/rankingmotor?jcd={a.jcd}&hd={a.d0}"
     try:
-        html = requests.get(url, timeout=30).text
+        html = _get(url)
     except Exception as ex:
         print("前検ページ取得失敗", ex); return None
     s = BeautifulSoup(html, "lxml")
@@ -79,7 +93,7 @@ def assen():
     import requests
     url = f"https://www.boatrace.jp/owpc/pc/race/assen?jcd={a.jcd}&hd={a.d0}"
     try:
-        html = requests.get(url, timeout=30).text
+        html = _get(url)
     except Exception as ex:
         print("あっせんページ取得失敗", ex); return None
     txt = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "|", html))
