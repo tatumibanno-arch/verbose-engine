@@ -47,11 +47,9 @@ def mine(pay,label):
     return T
 T=mine(pay,'本物'); T.to_csv(D+'mine_real.csv',index=False)
 ok=T[(T.確認>=1)&(T.最後>=1)].sort_values('最後の点数',ascending=False); print(ok.head(40).to_string(index=False))
-# でたらめ版: 発見期間だけ、レース内の払戻をそのままに「どの組が当たりか」をオッズに比例する確率で引き直す（＝売れ方どおりの世界）
-rng=np.random.default_rng(0); d=O[['hd','jcd','rno','inv','odds']].copy(); d['g']=rid
+# でたらめ版: 「売れ方がそのまま正しい世界」。レースごとに当たりを 1/オッズ に比例して引き直し、オッズどおり払い戻す（どの条件も本当は0.75前後）。
+rng=np.random.default_rng(0); gi,_=pd.factorize(rid); ng=gi.max()+1; inv=O.inv.values; sq=np.bincount(gi,weights=O.q.values,minlength=ng)
 for rep in range(2):
-    u=rng.random(len(d)); key=np.log(u)/d.inv.values   # Gumbel風: 1/オッズ に比例して1つ選ぶ（20〜100倍未満に入らない当たりは無視）
-    d['k']=key; win=d.groupby('g').k.transform('max')==d.k; scale=rng.random(len(d))  # レースごとに「この中に当たりがある確率」= Σq
-    tot=O.groupby(rid).q.transform('sum').values; has=pd.Series(rng.random(len(d))).groupby(rid).transform('first').values<tot
-    fake=np.where(win.values&has,(O.odds.values*100*0.75/ (O.inv.groupby(rid).transform('sum').values/O.tot.values) *0+O.odds.values*100),0).astype('float32')
-    Tf=mine(fake,f'でたらめ{rep+1}（売れ方どおりに当たりを引き直し、オッズそのまま払い戻す世界）')
+    key=np.log(rng.random(len(O)))/inv; mx=np.full(ng,-np.inf); np.maximum.at(mx,gi,key); win=key==mx[gi]; has=(rng.random(ng)<sq)[gi]
+    fake=np.where(win&has,O.odds.values*100,0).astype('float32'); print('でたらめ版の全体回収',round(fake.sum()/(100*len(fake)),3))
+    mine(fake,f'でたらめ{rep+1}')
