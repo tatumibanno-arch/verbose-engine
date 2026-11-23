@@ -97,6 +97,22 @@ def load_races(hd: str) -> list[dict]:
 
 # ------------------------------------------------------------------ 判定
 ODDS_FIELDS = ["hd", "jcd", "rno", "checked_at", "ticket_type", "combination", "odds"]
+ORITEN_FIELDS = ["hd", "jcd", "rno", "checked_at", "lane", "lap", "mawari", "chokusen", "lap_kind", "status"]
+
+
+def oriten_snap(hd: str, jcd: str, rno: int) -> list:
+    """その時点で BOATCAST のオリジナル展示（一周・まわり足・直線）が出ているかを記録する（締切前に使えるかの確認用）。"""
+    import subprocess
+    from scrape_oriten import fetch as fetch_oriten
+    try:
+        _, rows = fetch_oriten((hd, jcd, int(rno)))
+    except Exception:  # noqa: BLE001
+        rows = None
+    at = now_jst().strftime("%H:%M:%S")
+    if not rows:
+        return [{"hd": hd, "jcd": jcd, "rno": rno, "checked_at": at, "lane": "", "lap": "", "mawari": "", "chokusen": "",
+                 "lap_kind": "", "status": "none" if rows == [] else "error"}]
+    return [dict({k: r.get(k) for k in ORITEN_FIELDS if k in r}, checked_at=at) for r in rows]
 
 
 def market_probs(hd: str, jcd: str, rno: int, session: requests.Session, snap: list | None = None):
@@ -516,6 +532,7 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                 snap = snaps.get((race["jcd"], race["rno"])) or []
                 if not dry and snap:
                     append_log(LOG_DIR / f"{hd}_s{slot}_odds.csv", snap, ODDS_FIELDS)
+                    append_log(LOG_DIR / f"{hd}_s{slot}_oriten.csv", oriten_snap(hd, race["jcd"], race["rno"]), ORITEN_FIELDS)
                 if c2.get("enabled") and snap:
                     p2 = picks_2t(snap, c2)
                     if p2:
