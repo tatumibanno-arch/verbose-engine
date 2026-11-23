@@ -23,6 +23,7 @@ else:
         o['inv']=1/o.odds; g=o.groupby(key).inv; o['tot']=g.transform('sum'); o['n']=g.transform('size'); o=o[o.n==120]; o['s']=o.cb.str.split('-').apply(lambda x:''.join(sorted(x)))
         f=o.groupby(key+['s']).agg(q=('inv','sum'),tot=('tot','first')).reset_index(); f['q']=f.q/f.tot; f['rk']=f.groupby(key).q.rank(ascending=False,method='first'); rows.append(f); print(m,flush=True)
     F=pd.concat(rows).merge(p[key+['s','payout']].rename(columns={'s':'res'}),on=key); F['pay']=np.where(F.s==F.res,F.payout,0)
+    F[F.q>=.2].to_parquet('/tmp/claude-0/-home-user-verbose-engine/968008a0-6ecf-5641-a3ff-006912b41722/scratchpad/n2/s3f.parquet')
     R=lambda s: round(s.pay.sum()/(100*len(s)),3) if len(s) else np.nan
     def rep(nm,s): print(f'{nm} | 点 {len(s)} 的中 {(s.pay>0).mean():.3f} 回収 {R(s)} 前半 {R(s[s.hd<"20260201"])} 後半 {R(s[s.hd>="20260201"])}')
     print('3連単の売れ方から見た3連複の確率の帯ごと（全20組）')
