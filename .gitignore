@@ -8,3 +8,4 @@ data/lzh_cache/
 data/boatrace.db-wal
 data/boatrace.db-shm
 data/web_cache/
+data/live/runner.log
