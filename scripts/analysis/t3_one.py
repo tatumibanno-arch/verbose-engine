@@ -53,3 +53,16 @@ print('出ない場（オリジナル展示なし）', sorted(VENUES[j] for j in
 print('\n== 確認: 2026-11 の当てはめ（lap_one.py と件数が合うか）')
 Qn=Q[Q.hd>='20261101']; rep('11月',Qn,exo); print(Qn.groupby(Qn.hd.str[:6]).size().to_dict() if len(Qn) else 0)
 mo=Q.assign(pay=np.where(Q.res==exo(Q),Q.payout,0)); print((mo.groupby(mo.hd.str[:6]).pay.sum()/(100*mo.groupby(mo.hd.str[:6]).size())).round(2).to_dict())
+print('\n== 該当レース（0.4秒以上）の結果の内訳と、点数を足したとき')
+Q2=Q.copy(); Q2['pick']=exo(Q2); Q2['other']=np.where(Q2.pick=='1-2-3','1-3-2','1-2-3')
+r=Q2.res
+print('件数',len(Q2),'| 買い目の1点が的中',round((r==Q2.pick).mean(),3),'| もう片方（1-2-3/1-3-2の逆）',round((r==Q2.other).mean(),3),
+      '| ①頭で④⑤⑥が2・3着に入った',round((r.str[0]=='1').mean()-((r==Q2.pick)|(r==Q2.other)).mean(),3),'| ①が負けた',round((r.str[0]!='1').mean(),3))
+def roi(sel): 
+    tot=0; pay=0
+    for cb in sel:
+        tot+=len(Q2); pay+=np.where(r==(Q2[cb] if cb in Q2 else cb),Q2.payout,0).sum()
+    return round(pay/(100*tot),3)
+print('1点（今の形）',roi(['pick']),' 2点（1-2-3と1-3-2）',roi(['pick','other']))
+for extra in (['1-2-4','1-3-4'],['1-2-4','1-3-4','1-4-2','1-4-3']):
+    print('1点＋',extra,roi(['pick']+extra))
