@@ -22,20 +22,20 @@ per=np.where(O.hd<'20260101',0,np.where(O.hd<'20260701',1,2)); pay=O.pay.values
 rid=(O.hd+O.jcd+O.rno.astype(str)).values
 def mine(pay,label):
     S=[M[per==k] for k in range(3)]; Y=[pay[per==k] for k in range(3)]; found=[]
-    n=len(names); MIN=3000
+    n=len(names); MIN=3000; F0=S[0].astype(np.float32)
     for i in range(n):
         mi=S[0][:,i]
         if mi.sum()<MIN: continue
         for j in range(i+1,n):
-            mij=mi&S[0][:,j]; c=mij.sum()
+            mij=mi&S[0][:,j]; c=int(mij.sum())
             if c<MIN: continue
-            r=Y[0][mij].sum()/(100*c)
+            y=Y[0][mij]; r=y.sum()/(100*c)
             if r>=1.03: found.append(((i,j),c,r))
+            sub=F0[mij]; cnt=sub.sum(0); sm=y@sub
             for k in range(j+1,n):
-                m3=mij&S[0][:,k]; c3=m3.sum()
-                if c3<MIN: continue
-                r3=Y[0][m3].sum()/(100*c3)
-                if r3>=1.03: found.append(((i,j,k),c3,r3))
+                if cnt[k]>=MIN and cnt[k]<c:
+                    r3=sm[k]/(100*cnt[k])
+                    if r3>=1.03: found.append(((i,j,k),int(cnt[k]),float(r3)))
     out=[]
     for idx,c,r in found:
         row=[' ＆ '.join(names[t] for t in idx),c,round(r,3)]
