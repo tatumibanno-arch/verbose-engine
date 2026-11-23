@@ -51,7 +51,7 @@ def parse_text(hd: str, jcd: str, text: str, odd: list):
         # 想定の固定幅から外れた行（モーター欄が数字でない等）は記録しておく
         if not re.match(r"^\s*\d{1,2}\s", line[22:26]):
             odd.append((hd, jcd, rno, line))
-        code = "" if pos_raw.isdigit() else pos_raw
+        code = "" if (pos_raw.isdigit() and pos_raw != "00") else pos_raw  # "00"=順位なし（返還等）
         rows.append({
             "hd": hd, "jcd": jcd, "rno": rno, "lane": int(m.group(2)),
             "racer_no": int(m.group(3)), "pos_raw": pos_raw, "code": code,
