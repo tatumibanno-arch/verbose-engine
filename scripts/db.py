@@ -99,6 +99,13 @@ TABLES = {
           hit_rate real, roi real,
           primary key (hd, rule)
         )""",
+    # オリジナル展示（BOATCAST の独自展示タイム）: 1艇1行。lap は一周または半周ラップ（lap_kind で区別）。status 1=計測あり 2=計測できず
+    "oriten": """
+        create table if not exists oriten (
+          hd text not null, jcd text not null, rno int not null, lane int not null,
+          lap real, mawari real, chokusen real, lap_kind text, status text,
+          primary key (hd, jcd, rno, lane)
+        )""",
 }
 
 KEY_COLS = {
@@ -112,6 +119,7 @@ KEY_COLS = {
     "odds": ["hd", "jcd", "rno", "ticket_type", "combination"],
     "beforeinfo": ["hd", "jcd", "rno", "lane"],
     "racer_stats": ["hd", "racer_no"],
+    "oriten": ["hd", "jcd", "rno", "lane"],
 }
 
 
