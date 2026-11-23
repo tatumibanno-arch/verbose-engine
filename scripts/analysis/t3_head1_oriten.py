@@ -17,3 +17,10 @@ S=O[(O.ph<.35)&(O.a_lap==1)]
 rep('全部',S); rep('2・3着とも一周3位以内',S[(S.b_lap<=3)&(S.c_lap<=3)]); rep('2着が一周3位以内',S[S.b_lap<=3]); rep('2・3着とも一周4位以内',S[(S.b_lap<=4)&(S.c_lap<=4)])
 for lo,hi in ((0,15),(15,30),(30,50),(50,100)): rep(f'  2・3着とも一周3位以内＆{lo}〜{hi}倍',S[(S.b_lap<=3)&(S.c_lap<=3)&(S.odds>=lo)&(S.odds<hi)])
 S2=O[(O.ph<.5)&(O.a_lap==1)]; print('== ①頭50%未満 ＆ ①一周1位'); rep('全部',S2); rep('2・3着とも一周3位以内',S2[(S2.b_lap<=3)&(S2.c_lap<=3)])
+print('\n== 事前に決めた組み合わせ（①頭の組、①一周1位、2・3着とも一周3位以内）にさらに1つ足す')
+B=O[(O.a_lap==1)&(O.b_lap<=3)&(O.c_lap<=3)]
+b=pd.read_sql("select hd,jcd,rno,lane,exhibition_time et,json_extract(data,'$.wind_speed') ws,json_extract(data,'$.wave_height') wv from beforeinfo where hd>='20250601'",c); b['er']=b.groupby(key).et.rank(method='min')
+for q in ('ws','wv'): b[q]=pd.to_numeric(b[q],errors='coerce')
+env=b.groupby(key)[['ws','wv']].max().reset_index(); B=B.merge(env,on=key,how='left').merge(b[b.lane==1][key+['er']].rename(columns={'er':'er1'}),on=key,how='left')
+rep('土台（①頭の売れ方は問わない）',B); rep('①頭50%未満',B[B.ph<.5]); rep('①頭50%未満＆風3m以下',B[(B.ph<.5)&(B.ws<=3)]); rep('①頭50%未満＆波2cm以下',B[(B.ph<.5)&(B.wv<=2)])
+rep('①頭50%未満＆①公式展示1〜2位',B[(B.ph<.5)&(B.er1<=2)]); rep('①頭50%未満＆30倍以上',B[(B.ph<.5)&(B.odds>=30)]); rep('①頭40〜60%',B[(B.ph>=.4)&(B.ph<.6)])
