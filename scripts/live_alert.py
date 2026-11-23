@@ -32,6 +32,7 @@ RULE = "live_tansho_poolgap_v1"
 LIVE_DIR = DATA_DIR / "live"
 LOG_DIR = LIVE_DIR / "log"
 POLL_SECONDS = 20
+EARLY_MINUTES = 15   # 2026-11-24 追加: 締切15分前にもオッズを1回記録する（記録だけ。判定には使わない。rules.yaml は変えない）
 LOG_FIELDS = ["hd", "jcd", "rno", "close", "checked_at", "lane", "name", "tansho_odds", "p_tansho", "p_3t",
               "gap", "p_model", "alert", "sent"]
 
@@ -468,6 +469,7 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
         with open(log_path, encoding="utf-8") as f:
             done = {(r["jcd"], int(r["rno"])) for r in csv.DictReader(f)}
     end = hm_to_dt(now, s_to) + timedelta(minutes=2)
+    early_done: set = set()
     print(f"{hd} slot {slot} {s_from}-{s_to}: races {len(mine)} (done {len(done)})", flush=True)
     n_alert = 0
     cw = load_rules()["strategies"].get(RULE_WATCH) or {}
@@ -510,6 +512,20 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                                                  "sent_at": now_jst().strftime("%H:%M:%S"), "sent": sent,
                                                  "text": text.replace("\n", " | ")}],
                                    ["jcd", "rno", "close", "sent_at", "sent", "text"])
+            # 早めのオッズ（締切 early_minutes 分前）も1回記録する。締切前の「お金の流れ」を、買う時点で分かる材料として使えるかを確かめるため（2026-11-24 追加）
+            em = EARLY_MINUTES
+            if em and not dry:
+                early_due = [r for r in mine if (r["jcd"], r["rno"]) not in early_done
+                             and c["lead_minutes"] + 1 < (hm_to_dt(t, r["close"]) - t).total_seconds() / 60 <= em]
+                for r in early_due:
+                    early_done.add((r["jcd"], r["rno"]))
+                    snap_e: list = []
+                    try:
+                        market_probs(hd, r["jcd"], r["rno"], session, snap_e)
+                    except Exception as e:  # noqa: BLE001
+                        print(f"WARN early {r['jcd']} {r['rno']}: {e}", flush=True)
+                    if snap_e:
+                        append_log(LOG_DIR / f"{hd}_s{slot}_odds_early.csv", snap_e, ODDS_FIELDS)
             due = []
             for r in mine:
                 key = (r["jcd"], r["rno"])
