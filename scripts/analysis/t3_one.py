@@ -50,3 +50,6 @@ print('日数',len(cnt),'1日あたり平均',round(cnt.mean(),2),' 0レース�
 import sys; sys.path.insert(0,'scripts'); from common import VENUES
 print('場ごとの件数（多い順）', {VENUES[j]:n for j,n in Q.jcd.value_counts().head(10).items()})
 print('出ない場（オリジナル展示なし）', sorted(VENUES[j] for j in set(VENUES)-set(d.jcd.unique())))
+print('\n== 確認: 2026-11 の当てはめ（lap_one.py と件数が合うか）')
+Qn=Q[Q.hd>='20261101']; rep('11月',Qn,exo); print(Qn.groupby(Qn.hd.str[:6]).size().to_dict() if len(Qn) else 0)
+mo=Q.assign(pay=np.where(Q.res==exo(Q),Q.payout,0)); print((mo.groupby(mo.hd.str[:6]).pay.sum()/(100*mo.groupby(mo.hd.str[:6]).size())).round(2).to_dict())

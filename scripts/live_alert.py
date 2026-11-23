@@ -27,11 +27,27 @@ import requests
 
 from common import DATA_DIR, JST, VENUES, load_rules, to_hd, today, tomorrow
 from line_push import send_line
+import lap_one
+
+
+def lap_check(hd: str, race: dict, session) -> dict | None:
+    """オリジナル展示と公式の展示を取り、lap_one.judge で判定する。"""
+    from scrape_oriten import fetch as fetch_oriten
+    from scrape_web import fetch, parse_beforeinfo
+    _, rows = fetch_oriten((hd, race["jcd"], int(race["rno"])))
+    if not rows:
+        return {"wait": True}
+    html = fetch("beforeinfo", hd, race["jcd"], race["rno"], session)
+    b = parse_beforeinfo(html if isinstance(html, str) else (html.text if html is not None else ""))
+    b = b if isinstance(b, list) else b.get("rows", [])
+    return lap_one.judge(rows, b)
 
 RULE = "live_tansho_poolgap_v1"
 LIVE_DIR = DATA_DIR / "live"
 LOG_DIR = LIVE_DIR / "log"
 POLL_SECONDS = 20
+LAP_FROM_MINUTES = 12   # 3連単1点の知らせ: 締切の何分前から判定を始めるか（展示・オリジナル展示が出ていれば判定）
+LAP_FIELDS = ["hd", "jcd", "rno", "close", "checked_at", "result", "combo", "g34", "sent"]
 EARLY_MINUTES = 15   # 2026-11-24 追加: 締切15分前にもオッズを1回記録する（記録だけ。判定には使わない。rules.yaml は変えない）
 LOG_FIELDS = ["hd", "jcd", "rno", "close", "checked_at", "lane", "name", "tansho_odds", "p_tansho", "p_3t",
               "gap", "p_model", "alert", "sent"]
@@ -470,6 +486,11 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
             done = {(r["jcd"], int(r["rno"])) for r in csv.DictReader(f)}
     end = hm_to_dt(now, s_to) + timedelta(minutes=2)
     early_done: set = set()
+    lap_path = LOG_DIR / f"{hd}_s{slot}_lapone.csv"
+    lap_done: set = set()
+    if lap_path.exists():
+        with open(lap_path, encoding="utf-8") as f:
+            lap_done = {(r["jcd"], int(r["rno"])) for r in csv.DictReader(f)}
     print(f"{hd} slot {slot} {s_from}-{s_to}: races {len(mine)} (done {len(done)})", flush=True)
     n_alert = 0
     cw = load_rules()["strategies"].get(RULE_WATCH) or {}
@@ -526,6 +547,41 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                         print(f"WARN early {r['jcd']} {r['rno']}: {e}", flush=True)
                     if snap_e:
                         append_log(LOG_DIR / f"{hd}_s{slot}_odds_early.csv", snap_e, ODDS_FIELDS)
+            # 3連単1点の知らせ（t3-lap-one-v1、運用者が100円で買う。notes/decisions.md 2026-11-24）。締切12分前から、材料がそろい次第判定する
+            for r in mine:
+                key = (r["jcd"], r["rno"])
+                if key in lap_done:
+                    continue
+                left = (hm_to_dt(t, r["close"]) - t).total_seconds() / 60
+                if left > LAP_FROM_MINUTES:
+                    continue
+                if left < 2.5:
+                    lap_done.add(key)
+                    if not dry:
+                        append_log(lap_path, [{"hd": hd, "jcd": r["jcd"], "rno": r["rno"], "close": r["close"], "checked_at": t.strftime("%H:%M:%S"),
+                                               "result": "材料が出そろわず", "combo": "", "g34": "", "sent": 0}], LAP_FIELDS)
+                    continue
+                try:
+                    res = lap_check(hd, r, session)
+                except Exception as e:  # noqa: BLE001
+                    print(f"WARN lapone {key}: {e}", flush=True)
+                    continue
+                if res and res.get("wait"):
+                    continue
+                lap_done.add(key)
+                sent = 0
+                if res:
+                    text = lap_one.message(VENUES.get(r["jcd"], r["jcd"]), r["rno"], r["close"], res["combo"])
+                    print(text, flush=True)
+                    if not dry:
+                        try:
+                            sent = int(bool(send_line(text)))
+                        except Exception as e:  # noqa: BLE001
+                            print(f"WARN LINE: {e}", flush=True)
+                if not dry:
+                    append_log(lap_path, [{"hd": hd, "jcd": r["jcd"], "rno": r["rno"], "close": r["close"], "checked_at": t.strftime("%H:%M:%S"),
+                                           "result": "該当" if res else "非該当", "combo": (res or {}).get("combo", ""),
+                                           "g34": (res or {}).get("g34", ""), "sent": sent}], LAP_FIELDS)
             due = []
             for r in mine:
                 key = (r["jcd"], r["rno"])
@@ -537,7 +593,8 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                 elif left <= c["lead_minutes"]:
                     due.append(r)
             if not due:
-                if all((r["jcd"], r["rno"]) in done for r in mine) and all((r["jcd"], r["rno"]) in watch_done for r in watch):
+                if all((r["jcd"], r["rno"]) in done for r in mine) and all((r["jcd"], r["rno"]) in watch_done for r in watch) \
+                        and all((r["jcd"], r["rno"]) in lap_done for r in mine):
                     break
                 time.sleep(POLL_SECONDS)
                 continue
