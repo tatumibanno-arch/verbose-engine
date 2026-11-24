@@ -79,7 +79,7 @@ NAME4 = "t3-score4-v1"
 
 
 def judge4(oriten_rows: list[dict], before_rows: list[dict], static: dict) -> dict | None:
-    """紙上の候補 t3-score4-v1（記録だけ。LINE は送らない）。点数＝一周・直線・公式展示タイム（速い順）＋モーター2連率（高い順）の順位の合計。
+    """3連単1点の知らせ その3 t3-score4-v1（2026-11-24 から LINE も送る）。点数＝一周・直線・公式展示タイム（速い順）＋モーター2連率（高い順）の順位の合計。
     ①が点数1位、3番手と4番手の差が5.5以上（過去の上位4%の線）。買い目は judge と同じ作り方（①頭、2・3着は公式展示順）。"""
     lap = {int(r["lane"]): r.get("lap") for r in oriten_rows}; cho = {int(r["lane"]): r.get("chokusen") for r in oriten_rows}
     et = {int(r["lane"]): r.get("exhibition_time") for r in before_rows}
