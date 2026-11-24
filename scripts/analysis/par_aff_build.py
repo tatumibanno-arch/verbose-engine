@@ -61,6 +61,7 @@ for br,bxy in bc.items():
 d['dist'] = [tab.get((b,j),np.nan) for b,j in zip(d.branch.values, d.jcd.values)]
 d['local'] = (d.branch.values == d.jcd.map(vb).values).astype(float)
 d['local'] = np.where(d.branch.isna(), np.nan, d.local)
-d = d[d.hd>='20231101'].copy()     # 検証に使う期間だけ残す(特徴量は全履歴から作成済み)
+CUT = sys.argv[2] if len(sys.argv)>2 else '20231101'; END = sys.argv[3] if len(sys.argv)>3 else '99999999'
+d = d[(d.hd>=CUT)&(d.hd<END)].copy()     # 検証に使う期間だけ残す(特徴量は全履歴から作成済み)
 d.to_parquet(S+'/feat.parquet')
 print(len(d)); print(d[['aff','mom','dayno','rest','dist','local','n_v']].describe().T)
