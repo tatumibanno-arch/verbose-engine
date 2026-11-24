@@ -33,13 +33,12 @@ r['t_avg'] = np.where(r.nt >= 1, r.pt_t / r.nt.replace(0, np.nan), np.nan)
 r = r[r.hd >= '20231101']
 key = ['hd', 'jcd', 'rno']
 def mat(col):
-    p = r.pivot_table(index=key, columns='lane', values=col, aggfunc='first')
-    return p
+    return r.drop_duplicates(key+['lane']).set_index(key+['lane'])[col].unstack('lane')
 M = {k: mat(k) for k in ['m_avg', 't_avg', 'w_t', 'last_pt_t', 'dnf_prev', 'n_prev', 'nt']}
 M['nt'] = M['nt']
 idx = M['m_avg'].index
 ok = (M['nt'].notna().sum(axis=1) == 6)
-for k in M: M[k] = M[k].loc[ok[ok].index]
+for k in M: M[k] = M[k][ok.to_numpy()]
 idx = M['m_avg'].index
 A = {k: M[k].reindex(columns=range(1, 7)).to_numpy(float) for k in M}
 pay = pd.read_sql("select hd,jcd,rno,combination,payout from payouts where ticket_type='sanrensho' and hd>='20231101'", c)
