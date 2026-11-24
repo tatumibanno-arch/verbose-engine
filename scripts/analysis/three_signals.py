@@ -27,3 +27,9 @@ h=U[U.pay>0].pay.sort_values(ascending=False); print('大きい5本を除くと'
 seq=U.sort_values(key).pay.values>0; mx=cur=0
 for x in seq: cur=0 if x else cur+1; mx=max(mx,cur)
 print('いちばん長い連敗',mx)
+print('\n== 100円ずつ買っていたら')
+for sg,s in S.groupby('sig'): print(f'{sg}: 購入 {len(s)*100:,}円 払戻 {int(s.pay.sum()):,}円 利益 {int(s.pay.sum()-len(s)*100):,}円')
+U=U.sort_values(key); prof=U.pay.values-100; cum=np.cumsum(prof); dd=(cum-np.maximum.accumulate(np.maximum(cum,0))).min()
+print(f'3つ合わせて: 購入 {len(U)*100:,}円 払戻 {int(U.pay.sum()):,}円 利益 {int(cum[-1]):,}円 ／ いちばん沈んだとき（それまでの最高からの下げ） {int(dd):,}円')
+m=U.groupby(U.hd.str[:6]).apply(lambda s: int(s.pay.sum()-100*len(s))); print('月ごとの利益',m.to_dict())
+h=U.pay.sort_values(ascending=False); print('大きい5本を除いた利益',int(U.pay.sum()-h.head(5).sum()-100*len(U)))
