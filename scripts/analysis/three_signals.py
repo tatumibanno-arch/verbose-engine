@@ -44,3 +44,7 @@ for r in top.itertuples():
     print(r.hd,VENUES[r.jcd],f'{r.rno}R',r.sig,r.cb,f'{int(r.pay)}円','人気',int(q.rk.iloc[0]) if len(q) else '?','/120',' '.join(f'{l}{gr}' for l,gr in zip(g.lane,g.grade)))
 pk=pd.read_sql("select hd,jcd,rno,combination cb,odds from odds where ticket_type='sanrensho' and hd>='20250601'",c).merge(U[key+['cb']],on=key+['cb'])
 print('知らせの買い目の確定オッズ: 中央値',pk.odds.median(),' 10倍未満',round((pk.odds<10).mean(),3),' 10〜30倍',round(((pk.odds>=10)&(pk.odds<30)).mean(),3),' 30〜100倍',round(((pk.odds>=30)&(pk.odds<100)).mean(),3),' 100倍以上',round((pk.odds>=100).mean(),3))
+print('\n== 知らせごと、大きい当たりを除いた利益（100円）')
+for sg,s in S.groupby('sig'):
+    h=s.pay.sort_values(ascending=False); base=int(s.pay.sum()-100*len(s))
+    print(sg,'利益',base,' 大きい1本を除くと',int(base-h.iloc[0]),' 2本',int(base-h.head(2).sum()),' 3本',int(base-h.head(3).sum()),' 大きい当たり',list(h.head(3).astype(int)))
