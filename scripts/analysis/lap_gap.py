@@ -40,3 +40,9 @@ for th in (0.0,0.3,0.4):
     print(f'-- 3位と4位の差{th}秒以上')
     for pr,g in s.groupby('pair'):
         if len(g)>=150: rep(f'  2・3着が {pr[0]}・{pr[1]}',g,'sanrensho',t3_ex)
+print('\n== ③⑥の組の中身')
+s=s0.assign(pair=s0.apply(lambda r:''.join(sorted([str(r.lane2),str(r.lane3)])),axis=1)); g=s[(s.pair=='36')].copy()
+cb=t3_ex(g); g['pay']=np.where(g.r_sanrensho==cb,g.p_sanrensho,0)
+for th in (0.0,0.2,0.3,0.4,0.5):
+    q=g[g.g34>=th]; h=q[q.pay>0].pay.sort_values(ascending=False)
+    print(f'差{th}秒以上 | レース {len(q)} 的中 {len(h)} 回収 {q.pay.sum()/(100*len(q)):.3f} | 当たりの払戻（大きい順） {list(h.astype(int).head(8))} | 上位2本を除くと {(q.pay.sum()-h.head(2).sum())/(100*len(q)):.3f}')
