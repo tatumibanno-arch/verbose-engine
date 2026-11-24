@@ -72,3 +72,25 @@ def judge(oriten_rows: list[dict], before_rows: list[dict], static: dict) -> dic
     ea, eb = et.get(a), et.get(b)
     second, third = (a, b) if (_ok(ea) and _ok(eb) and ea <= eb) else (b, a)
     return {"combo": f"1-{second}-{third}", "gap": round(gap, 1)}
+
+
+GAP4 = 5.5
+NAME4 = "t3-score4-v1"
+
+
+def judge4(oriten_rows: list[dict], before_rows: list[dict], static: dict) -> dict | None:
+    """紙上の候補 t3-score4-v1（記録だけ。LINE は送らない）。点数＝一周・直線・公式展示タイム（速い順）＋モーター2連率（高い順）の順位の合計。
+    ①が点数1位、3番手と4番手の差が5.5以上（過去の上位4%の線）。買い目は judge と同じ作り方（①頭、2・3着は公式展示順）。"""
+    lap = {int(r["lane"]): r.get("lap") for r in oriten_rows}; cho = {int(r["lane"]): r.get("chokusen") for r in oriten_rows}
+    et = {int(r["lane"]): r.get("exhibition_time") for r in before_rows}
+    if sum(_ok(v) for v in lap.values()) < 5 or sum(_ok(v) for v in et.values()) < 5:
+        return {"wait": True}
+    rl, rc, re_ = _rank(lap), _rank(cho), _rank(et)
+    rmo = _rank({k: (static.get(k) or (None,) * 3)[1] for k in range(1, 7)}, True)
+    sc = {k: rl.get(k, 0) + rc.get(k, 3.5) + re_.get(k, 0) + rmo.get(k, 0) for k in range(1, 7) if k in lap}
+    order = sorted(sc, key=lambda k: (sc[k], k))
+    if len(order) < 4 or order[0] != 1 or sc[order[3]] - sc[order[2]] < GAP4:
+        return None
+    a, b = order[1], order[2]; ea, eb = et.get(a), et.get(b)
+    second, third = (a, b) if (_ok(ea) and _ok(eb) and ea <= eb) else (b, a)
+    return {"combo": f"1-{second}-{third}", "gap": round(sc[order[3]] - sc[order[2]], 1)}

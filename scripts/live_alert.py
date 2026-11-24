@@ -50,9 +50,10 @@ def lap_check(hd: str, race: dict, session) -> dict | None:
         except Exception as e:  # noqa: BLE001
             print(f"WARN score_one static: {e}", flush=True); _STATIC[hd] = {}
     r2 = score_one.judge(rows, b, _STATIC[hd].get((race["jcd"], int(race["rno"])), {}))
+    r3 = score_one.judge4(rows, b, _STATIC[hd].get((race["jcd"], int(race["rno"])), {}))
     if (r1 and r1.get("wait")) or (r2 and r2.get("wait")):
         return {"wait": True}
-    return {"lap": r1, "score": r2}
+    return {"lap": r1, "score": r2, "score4": None if (r3 and r3.get("wait")) else r3}
 
 RULE = "live_tansho_poolgap_v1"
 LIVE_DIR = DATA_DIR / "live"
@@ -583,9 +584,9 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                 lap_done.add(key)
                 sent_combos: set = set()
                 rows_log = []
-                for rule, rr in (("lap", res.get("lap")), ("score", res.get("score"))):
+                for rule, rr in (("lap", res.get("lap")), ("score", res.get("score")), ("score4", res.get("score4"))):
                     sent = 0
-                    if rr and rr["combo"] not in sent_combos:
+                    if rr and rule != "score4" and rr["combo"] not in sent_combos:   # score4 は紙上の候補（記録だけ）
                         sent_combos.add(rr["combo"])
                         text = lap_one.message(VENUES.get(r["jcd"], r["jcd"]), r["rno"], r["close"], rr["combo"])
                         print(f"[{rule}] " + text, flush=True)
@@ -595,7 +596,7 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                             except Exception as e:  # noqa: BLE001
                                 print(f"WARN LINE: {e}", flush=True)
                     rows_log.append({"hd": hd, "jcd": r["jcd"], "rno": r["rno"], "close": r["close"], "checked_at": t.strftime("%H:%M:%S"),
-                                     "result": ("該当" if rr else "非該当") + ("" if rule == "lap" else "（score）"),
+                                     "result": ("該当" if rr else "非該当") + {"lap": "", "score": "（score）", "score4": "（score4・記録だけ）"}[rule],
                                      "combo": (rr or {}).get("combo", ""), "g34": (rr or {}).get("g34", (rr or {}).get("gap", "")), "sent": sent})
                 if not dry:
                     append_log(lap_path, rows_log, LAP_FIELDS)
