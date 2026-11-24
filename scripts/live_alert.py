@@ -28,10 +28,13 @@ import requests
 from common import DATA_DIR, JST, VENUES, load_rules, to_hd, today, tomorrow
 from line_push import send_line
 import lap_one
+import score_one
+_STATIC: dict = {}
 
 
 def lap_check(hd: str, race: dict, session) -> dict | None:
-    """オリジナル展示と公式の展示を取り、lap_one.judge で判定する。"""
+    """オリジナル展示と公式の展示を取り、lap_one.judge（t3-lap-one-v1）と score_one.judge（t3-score-one-v1）で判定する。
+    戻り値: {"wait": True} か、{"lap": 結果か None, "score": 結果か None}。"""
     from scrape_oriten import fetch as fetch_oriten
     from scrape_web import fetch, parse_beforeinfo
     _, rows = fetch_oriten((hd, race["jcd"], int(race["rno"])))
@@ -40,7 +43,16 @@ def lap_check(hd: str, race: dict, session) -> dict | None:
     html = fetch("beforeinfo", hd, race["jcd"], race["rno"], session)
     b = parse_beforeinfo(html if isinstance(html, str) else (html.text if html is not None else ""))
     b = b if isinstance(b, list) else b.get("rows", [])
-    return lap_one.judge(rows, b)
+    r1 = lap_one.judge(rows, b)
+    if hd not in _STATIC:
+        try:
+            _STATIC[hd] = score_one.load_static(hd)
+        except Exception as e:  # noqa: BLE001
+            print(f"WARN score_one static: {e}", flush=True); _STATIC[hd] = {}
+    r2 = score_one.judge(rows, b, _STATIC[hd].get((race["jcd"], int(race["rno"])), {}))
+    if (r1 and r1.get("wait")) or (r2 and r2.get("wait")):
+        return {"wait": True}
+    return {"lap": r1, "score": r2}
 
 RULE = "live_tansho_poolgap_v1"
 LIVE_DIR = DATA_DIR / "live"
@@ -569,19 +581,24 @@ def cmd_run(slot: int | None, test: bool, dry: bool) -> int:
                 if res and res.get("wait"):
                     continue
                 lap_done.add(key)
-                sent = 0
-                if res:
-                    text = lap_one.message(VENUES.get(r["jcd"], r["jcd"]), r["rno"], r["close"], res["combo"])
-                    print(text, flush=True)
-                    if not dry:
-                        try:
-                            sent = int(bool(send_line(text)))
-                        except Exception as e:  # noqa: BLE001
-                            print(f"WARN LINE: {e}", flush=True)
+                sent_combos: set = set()
+                rows_log = []
+                for rule, rr in (("lap", res.get("lap")), ("score", res.get("score"))):
+                    sent = 0
+                    if rr and rr["combo"] not in sent_combos:
+                        sent_combos.add(rr["combo"])
+                        text = lap_one.message(VENUES.get(r["jcd"], r["jcd"]), r["rno"], r["close"], rr["combo"])
+                        print(f"[{rule}] " + text, flush=True)
+                        if not dry:
+                            try:
+                                sent = int(bool(send_line(text)))
+                            except Exception as e:  # noqa: BLE001
+                                print(f"WARN LINE: {e}", flush=True)
+                    rows_log.append({"hd": hd, "jcd": r["jcd"], "rno": r["rno"], "close": r["close"], "checked_at": t.strftime("%H:%M:%S"),
+                                     "result": ("該当" if rr else "非該当") + ("" if rule == "lap" else "（score）"),
+                                     "combo": (rr or {}).get("combo", ""), "g34": (rr or {}).get("g34", (rr or {}).get("gap", "")), "sent": sent})
                 if not dry:
-                    append_log(lap_path, [{"hd": hd, "jcd": r["jcd"], "rno": r["rno"], "close": r["close"], "checked_at": t.strftime("%H:%M:%S"),
-                                           "result": "該当" if res else "非該当", "combo": (res or {}).get("combo", ""),
-                                           "g34": (res or {}).get("g34", ""), "sent": sent}], LAP_FIELDS)
+                    append_log(lap_path, rows_log, LAP_FIELDS)
             due = []
             for r in mine:
                 key = (r["jcd"], r["rno"])
