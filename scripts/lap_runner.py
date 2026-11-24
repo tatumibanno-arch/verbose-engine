@@ -10,8 +10,14 @@ ROOT = Path(__file__).resolve().parent.parent
 BR = "claude/tender-newton-ymc8j0"
 
 
+WORK = ROOT / "data" / "live" / "log_work"   # 書き込み中のログ（git の外）。30分ごとに data/live/log へ写してコミットする（作業ツリーが途中で汚れないように）
+
+
 def push_logs(msg: str) -> None:
+    import shutil
     sh = lambda *a: subprocess.run(list(a), cwd=ROOT, capture_output=True, text=True)
+    for f in WORK.glob("*.csv"):
+        shutil.copy2(f, ROOT / "data" / "live" / "log" / f.name)
     sh("git", "add", "data/live/log")
     if sh("git", "diff", "--cached", "--quiet").returncode == 0:
         return
@@ -24,6 +30,12 @@ def push_logs(msg: str) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("--until", default="21:40"); ap.add_argument("--max-minutes", type=int, default=110); a = ap.parse_args()
+    import shutil
+    WORK.mkdir(parents=True, exist_ok=True)
+    for f in (ROOT / "data" / "live" / "log").glob(f"{la.to_hd(la.today())}_*.csv"):   # 今日の分を作業場所へ（途中から再開できるように）
+        if not (WORK / f.name).exists():
+            shutil.copy2(f, WORK / f.name)
+    la.LOG_DIR = WORK
     now = la.now_jst().strftime("%H:%M")
     from datetime import timedelta
     cap = (la.now_jst() + timedelta(minutes=a.max_minutes)).strftime("%H:%M")
@@ -32,7 +44,7 @@ if __name__ == "__main__":
     la.cfg = lambda: dict(orig(), slots=[[now, a.until]])
     stop = threading.Event()
     def periodic():
-        while not stop.wait(1800):
+        while not stop.wait(1200):
             push_logs(f"live: 締切前の記録（途中） {la.now_jst():%Y%m%d-%H%M}")
     threading.Thread(target=periodic, daemon=True).start()
     try:

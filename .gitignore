@@ -9,3 +9,4 @@ data/boatrace.db-wal
 data/boatrace.db-shm
 data/web_cache/
 data/live/runner.log
+data/live/log_work/
