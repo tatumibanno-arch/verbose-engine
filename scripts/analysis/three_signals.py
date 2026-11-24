@@ -33,3 +33,14 @@ U=U.sort_values(key); prof=U.pay.values-100; cum=np.cumsum(prof); dd=(cum-np.max
 print(f'3つ合わせて: 購入 {len(U)*100:,}円 払戻 {int(U.pay.sum()):,}円 利益 {int(cum[-1]):,}円 ／ いちばん沈んだとき（それまでの最高からの下げ） {int(dd):,}円')
 m=U.groupby(U.hd.str[:6]).apply(lambda s: int(s.pay.sum()-100*len(s))); print('月ごとの利益',m.to_dict())
 h=U.pay.sort_values(ascending=False); print('大きい5本を除いた利益',int(U.pay.sum()-h.head(5).sum()-100*len(U)))
+print('\n== 大きい当たりの中身')
+import sys; sys.path.insert(0,'scripts'); from common import VENUES
+top=U.sort_values('pay',ascending=False).head(6)
+oo=pd.read_sql("select hd,jcd,rno,combination cb,odds from odds where ticket_type='sanrensho' and hd>='20250601'",c).merge(top[key],on=key)
+oo['rk']=oo.groupby(key).odds.rank(method='min')
+ee=pd.read_sql("select hd,jcd,rno,lane,grade,racer_name from entries where hd>='20250601'",c).merge(top[key],on=key)
+for r in top.itertuples():
+    q=oo[(oo.hd==r.hd)&(oo.jcd==r.jcd)&(oo.rno==r.rno)&(oo.cb==r.cb)]; g=ee[(ee.hd==r.hd)&(ee.jcd==r.jcd)&(ee.rno==r.rno)].sort_values('lane')
+    print(r.hd,VENUES[r.jcd],f'{r.rno}R',r.sig,r.cb,f'{int(r.pay)}円','人気',int(q.rk.iloc[0]) if len(q) else '?','/120',' '.join(f'{l}{gr}' for l,gr in zip(g.lane,g.grade)))
+pk=pd.read_sql("select hd,jcd,rno,combination cb,odds from odds where ticket_type='sanrensho' and hd>='20250601'",c).merge(U[key+['cb']],on=key+['cb'])
+print('知らせの買い目の確定オッズ: 中央値',pk.odds.median(),' 10倍未満',round((pk.odds<10).mean(),3),' 10〜30倍',round(((pk.odds>=10)&(pk.odds<30)).mean(),3),' 30〜100倍',round(((pk.odds>=30)&(pk.odds<100)).mean(),3),' 100倍以上',round((pk.odds>=100).mean(),3))
