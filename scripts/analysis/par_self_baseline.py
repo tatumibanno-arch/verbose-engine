@@ -40,7 +40,7 @@ print('test boats',len(X),'with racer base',X.drb_zz_lap.notna().mean().round(3)
 # 艇ごとの順（公式展示順の並び）
 Ex=X.pivot_table(index=key,columns='lane',values='et').reindex(columns=range(1,7))
 ordr=pd.DataFrame(np.argsort(np.where(np.isnan(Ex.values),9,Ex.values),axis=1,kind='stable')+1,index=Ex.index)
-O=ordr.reindex(pd.MultiIndex.from_frame(X[key])).values
+O=ordr.reindex(pd.MultiIndex.from_frame(X[key])).values.astype(int)
 s=X.lane.values[:,None]
 def pick(excl_one):
     mask=(O==s)|((O==1)&excl_one) if excl_one else (O==s)
@@ -115,5 +115,3 @@ print('試した数',len(H))
 for nm,cond,kind,bc in H:
     T,Bt=evaluate(nm,cond.fillna(False)&(Rz.notna()|Mz.notna()),kind,bc)
     rep(nm,T,Bt,len(H))
-if len(sys.argv)>1:
-    T,Bt=evaluate('x',(Rz<=-1)&L26,'s1t',L26); print(T.head(), p.head(), T.dtypes, p.dtypes)
