@@ -33,3 +33,10 @@ for th in (0.3,0.4,0.5):
 print('== D 単勝1点: 一周1位が2位から離れている')
 for th in (0.3,0.4,0.5):
     s=W[W.g12>=th]; rep(f'1位と2位の差{th}秒以上 単勝（一周1位の艇）',s,'tansho',lambda q:L(q.lane1)); rep(f'  うち①',s[s.lane1==1],'tansho',lambda q:L(q.lane1)); rep(f'  うち①以外',s[s.lane1!=1],'tansho',lambda q:L(q.lane1))
+print('\n== E ①頭で、2・3着の組を状況で変える（①が一周1位、2・3着=一周2・3位の艇、順は公式展示）。2・3着の組ごと')
+s0=W[(W.lane1==1)]
+for th in (0.0,0.3,0.4):
+    s=s0[s0.g34>=th]; s=s.assign(pair=s.apply(lambda r:''.join(sorted([str(r.lane2),str(r.lane3)])),axis=1))
+    print(f'-- 3位と4位の差{th}秒以上')
+    for pr,g in s.groupby('pair'):
+        if len(g)>=150: rep(f'  2・3着が {pr[0]}・{pr[1]}',g,'sanrensho',t3_ex)
