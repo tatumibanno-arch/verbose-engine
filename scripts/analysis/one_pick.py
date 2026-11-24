@@ -57,3 +57,7 @@ for g in (9,10):
     for pr in ('23',):
         u=s[s.pair==pr]; print(f'  ②③の組だけ | {len(u)} 回収 {R(u):.3f}  ②③以外 | {len(s)-len(u)} 回収 {R(s[s.pair!=pr]):.3f} 前半 {R(s[(s.pair!=pr)&(s.hd<cut)]):.3f} 後半 {R(s[(s.pair!=pr)&(s.hd>=cut)]):.3f}')
 days=pd.Series(sorted(X.hd.unique())); cnt=top[top.gap>=9].groupby('hd').size().reindex(days,fill_value=0); print('差9以上 1日平均',round(cnt.mean(),2),'0の日',round((cnt==0).mean(),3))
+print('\n== 差10以上: 1点（公式展示順）と、逆順1点、2点（両方）')
+s=top[top.gap>=10].copy(); rev='1-'+np.where(first.loc[s.index],b_.loc[s.index],a.loc[s.index])+'-'+np.where(first.loc[s.index],a.loc[s.index],b_.loc[s.index])
+pr=np.where(s.res==rev,s.payout,0)
+print('1点（公式展示順）',round(s.pay.sum()/(100*len(s)),3),' 逆順1点',round(pr.sum()/(100*len(s)),3),' 2点（両方）',round((s.pay.sum()+pr.sum())/(200*len(s)),3),' 的中: 1点',round((s.pay>0).mean(),3),'2点',round(((s.pay>0)|(pr>0)).mean(),3))
